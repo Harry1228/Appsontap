@@ -22,7 +22,7 @@
             </intent-filter>
         </activity>
 
-        <!-- Zero-Latency Native Widget Receiver -->
+        <!-- Widget Receiver -->
         <receiver
             android:name=".widget.CategoryWidgetProvider"
             android:exported="true">
@@ -33,6 +33,18 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/category_widget_info" />
+        </receiver>
+
+        <!-- Background Package Observer -->
+        <receiver
+            android:name=".data.PackageChangeReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.PACKAGE_ADDED" />
+                <action android:name="android.intent.action.PACKAGE_REMOVED" />
+                <action android:name="android.intent.action.PACKAGE_REPLACED" />
+                <data android:scheme="package" />
+            </intent-filter>
         </receiver>
 
     </application>

@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.categorydockwidget.R
 import com.example.categorydockwidget.data.AppModel
+import com.example.categorydockwidget.data.AppRepository
 import com.example.categorydockwidget.data.Category
 import com.example.categorydockwidget.data.WidgetKeys
 import com.example.categorydockwidget.widget.CategoryWidgetProvider
@@ -116,26 +117,20 @@ fun MainScreen(
         mutableIntStateOf(prefs.getInt("corner_radius", 24))
     }
 
-    var installedApps by remember { mutableStateOf<List<AppModel>>(emptyList()) }
+    // 1. Instant Cache Fetch (0ms render time)
+    val cachedList = remember { AppRepository.getCachedApps(context) }
+    var installedApps by remember { mutableStateOf(cachedList) }
     var searchQuery by remember { mutableStateOf("") }
-    var isLoading by remember { mutableStateOf(true) }
+    var isLoading by remember { mutableStateOf(cachedList.isEmpty()) }
 
+    // 2. Non-blocking background sync
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
-            val pm = context.packageManager
-            val intent = Intent(Intent.ACTION_MAIN, null).apply {
-                addCategory(Intent.CATEGORY_LAUNCHER)
+            val freshApps = AppRepository.reloadApps(context)
+            withContext(Dispatchers.Main) {
+                installedApps = freshApps
+                isLoading = false
             }
-            val apps = pm.queryIntentActivities(intent, 0).mapNotNull { resolveInfo ->
-                val pkg = resolveInfo.activityInfo.packageName
-                if (pkg != context.packageName) {
-                    val name = resolveInfo.loadLabel(pm).toString()
-                    AppModel(packageName = pkg, appName = name)
-                } else null
-            }.sortedBy { it.appName.lowercase() }
-
-            installedApps = apps
-            isLoading = false
         }
     }
 
@@ -246,7 +241,6 @@ fun MainScreen(
                     }
                 }
 
-                // Instant Search Filter Field
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
@@ -418,7 +412,7 @@ fun MainScreen(
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = "Zero-latency native Android widget with optimized Jetpack Compose configuration.",
+                        text = "Zero-latency native Android widget with optimized local catalog caching.",
                         color = Color.White,
                         fontSize = 13.sp
                     )
@@ -447,7 +441,6 @@ fun MainScreen(
     }
 }
 
-// Isolated, fully skippable composable row
 @Composable
 private fun AppItemRow(
     appName: String,
