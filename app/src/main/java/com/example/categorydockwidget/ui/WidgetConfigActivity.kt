@@ -69,7 +69,6 @@ class WidgetConfigActivity : ComponentActivity() {
         cornerRadius: Int,
         appWidgetId: Int
     ) {
-        // Pre-bake icons to internal storage so cold starts are instant
         AppIconHelper.prewarmIcons(this, categories)
 
         val json = Gson().toJson(categories)
@@ -105,8 +104,12 @@ fun MainScreen(
     var categories by remember {
         val rawJson = prefs.getString("categories_json", null)
         val initial = if (rawJson != null) {
-            val type = object : TypeToken<List<Category>>() {}.type
-            Gson().fromJson<List<Category>>(rawJson, type)
+            try {
+                val type = object : TypeToken<List<Category>>() {}.type
+                Gson().fromJson<List<Category>>(rawJson, type) ?: WidgetKeys.DEFAULT_CATEGORIES
+            } catch (_: Exception) {
+                WidgetKeys.DEFAULT_CATEGORIES
+            }
         } else {
             WidgetKeys.DEFAULT_CATEGORIES
         }
@@ -136,17 +139,20 @@ fun MainScreen(
         }
     }
 
-    val activeCategory = categories.getOrNull(activeCategoryIndex) ?: categories.first()
+    val safeIndex = activeCategoryIndex.coerceIn(0, (categories.size - 1).coerceAtLeast(0))
+    val activeCategory = categories.getOrNull(safeIndex) ?: WidgetKeys.DEFAULT_CATEGORIES.first()
+    
     val selectedPackageSet = remember(activeCategory.packageNames) {
         activeCategory.packageNames.toSet()
     }
 
     val filteredApps = remember(searchQuery, installedApps) {
-        if (searchQuery.isBlank()) installedApps
+        val list = if (searchQuery.isBlank()) installedApps
         else installedApps.filter {
             it.appName.contains(searchQuery, ignoreCase = true) ||
             it.packageName.contains(searchQuery, ignoreCase = true)
         }
+        list.distinctBy { it.packageName }
     }
 
     Scaffold(
@@ -229,14 +235,14 @@ fun MainScreen(
 
             if (selectedMainTab == 0) {
                 ScrollableTabRow(
-                    selectedTabIndex = activeCategoryIndex,
+                    selectedTabIndex = safeIndex,
                     containerColor = Color(0xFF15151C),
                     contentColor = Color.White,
                     edgePadding = 16.dp
                 ) {
                     categories.forEachIndexed { index, cat ->
                         Tab(
-                            selected = activeCategoryIndex == index,
+                            selected = safeIndex == index,
                             onClick = { activeCategoryIndex = index },
                             text = { Text(cat.name) }
                         )
@@ -299,7 +305,7 @@ fun MainScreen(
                                         }
                                     }
                                     val updated = categories.toMutableList()
-                                    updated[activeCategoryIndex] = activeCategory.copy(packageNames = updatedList)
+                                    updated[safeIndex] = activeCategory.copy(packageNames = updatedList)
                                     categories = updated
                                 }
                             )
