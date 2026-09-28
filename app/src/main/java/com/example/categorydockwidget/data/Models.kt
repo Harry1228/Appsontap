@@ -1,8 +1,10 @@
 package com.example.categorydockwidget.data
 
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.util.LruCache
 import androidx.datastore.preferences.core.stringPreferencesKey
 
 data class AppModel(
@@ -28,15 +30,29 @@ object WidgetKeys {
 }
 
 object AppIconHelper {
+    // Cache up to 40 app icon bitmaps in RAM so they are never re-decoded on tap
+    private val iconCache = LruCache<String, Bitmap>(40)
+    private val intentCache = HashMap<String, Intent?>()
+
+    fun getLaunchIntent(context: Context, packageName: String): Intent? {
+        return intentCache.getOrPut(packageName) {
+            context.packageManager.getLaunchIntentForPackage(packageName)
+        }
+    }
+
     fun getAppBitmap(context: Context, packageName: String): Bitmap? {
+        // Return instantly from memory if cached
+        iconCache.get(packageName)?.let { return it }
+
         return try {
             val drawable = context.packageManager.getApplicationIcon(packageName)
-            val width = drawable.intrinsicWidth.coerceAtLeast(64)
-            val height = drawable.intrinsicHeight.coerceAtLeast(64)
-            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            // Cap at 96x96 px (plenty sharp for 48dp widget icons, but uses 75% less Binder memory)
+            val size = 96
+            val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(bitmap)
-            drawable.setBounds(0, 0, canvas.width, canvas.height)
+            drawable.setBounds(0, 0, size, size)
             drawable.draw(canvas)
+            iconCache.put(packageName, bitmap)
             bitmap
         } catch (_: Exception) {
             null
