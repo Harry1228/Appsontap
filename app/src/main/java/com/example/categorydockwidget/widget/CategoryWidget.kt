@@ -26,8 +26,14 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             R.id.app_icon_4, R.id.app_icon_5, R.id.app_icon_6, R.id.app_icon_7
         )
 
-        private val CAT_BUTTON_IDS = intArrayOf(
-            R.id.cat_btn_0, R.id.cat_btn_1, R.id.cat_btn_2, R.id.cat_btn_3
+        private val CAT_CONTAINER_IDS = intArrayOf(
+            R.id.cat_container_0, R.id.cat_container_1, R.id.cat_container_2, R.id.cat_container_3
+        )
+        private val CAT_BG_IDS = intArrayOf(
+            R.id.cat_bg_0, R.id.cat_bg_1, R.id.cat_bg_2, R.id.cat_bg_3
+        )
+        private val CAT_TEXT_IDS = intArrayOf(
+            R.id.cat_text_0, R.id.cat_text_1, R.id.cat_text_2, R.id.cat_text_3
         )
 
         fun updateWidget(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int) {
@@ -75,16 +81,18 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             }
 
             // 2. Populate Category Dock Buttons
-            for (j in CAT_BUTTON_IDS.indices) {
-                val btnId = CAT_BUTTON_IDS[j]
+            for (j in CAT_CONTAINER_IDS.indices) {
+                val containerId = CAT_CONTAINER_IDS[j]
+                val bgId = CAT_BG_IDS[j]
+                val textId = CAT_TEXT_IDS[j]
+
                 if (j < categories.size) {
                     val cat = categories[j]
                     val isSelected = cat.id == activeCategory?.id
 
-                    views.setTextViewText(btnId, cat.name.take(2).uppercase())
-                    views.setInt(
-                        btnId,
-                        "setBackgroundResource",
+                    views.setTextViewText(textId, cat.name.take(2).uppercase())
+                    views.setImageViewResource(
+                        bgId,
                         if (isSelected) R.drawable.pill_active else R.drawable.pill_inactive
                     )
 
@@ -99,10 +107,10 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                         switchIntent,
                         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                     )
-                    views.setOnClickPendingIntent(btnId, pendingSwitch)
-                    views.setViewVisibility(btnId, View.VISIBLE)
+                    views.setOnClickPendingIntent(containerId, pendingSwitch)
+                    views.setViewVisibility(containerId, View.VISIBLE)
                 } else {
-                    views.setViewVisibility(btnId, View.GONE)
+                    views.setViewVisibility(containerId, View.GONE)
                 }
             }
 
@@ -133,7 +141,6 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                 AppWidgetManager.INVALID_APPWIDGET_ID
             )
             if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
-                // Instant synchronous RAM update
                 val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
                 prefs.edit().putString("selected_category_$appWidgetId", catId).apply()
 

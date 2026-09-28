@@ -96,59 +96,111 @@
         </LinearLayout>
     </LinearLayout>
 
-    <!-- Vertical Divider -->
-    <View
+    <!-- Vertical Divider (Uses ImageView so RemoteViews can inflate it) -->
+    <ImageView
         android:layout_width="1dp"
         android:layout_height="match_parent"
         android:layout_marginStart="8dp"
         android:layout_marginEnd="8dp"
         android:background="#22FFFFFF" />
 
-    <!-- RIGHT: Category Selector Dock (Pill Buttons) -->
+    <!-- RIGHT: Category Dock Pills -->
     <LinearLayout
-        android:layout_width="52dp"
+        android:layout_width="44dp"
         android:layout_height="match_parent"
         android:gravity="center"
         android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/cat_btn_0"
+        <!-- Category 0 -->
+        <FrameLayout
+            android:id="@+id/cat_container_0"
             android:layout_width="38dp"
             android:layout_height="38dp"
-            android:layout_marginBottom="6dp"
-            android:gravity="center"
-            android:textColor="#FFFFFF"
-            android:textSize="11sp"
-            android:textStyle="bold" />
+            android:layout_marginBottom="6dp">
 
-        <TextView
-            android:id="@+id/cat_btn_1"
-            android:layout_width="38dp"
-            android:layout_height="38dp"
-            android:layout_marginBottom="6dp"
-            android:gravity="center"
-            android:textColor="#FFFFFF"
-            android:textSize="11sp"
-            android:textStyle="bold" />
+            <ImageView
+                android:id="@+id/cat_bg_0"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:src="@drawable/pill_inactive" />
 
-        <TextView
-            android:id="@+id/cat_btn_2"
-            android:layout_width="38dp"
-            android:layout_height="38dp"
-            android:layout_marginBottom="6dp"
-            android:gravity="center"
-            android:textColor="#FFFFFF"
-            android:textSize="11sp"
-            android:textStyle="bold" />
+            <TextView
+                android:id="@+id/cat_text_0"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:textColor="#FFFFFF"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </FrameLayout>
 
-        <TextView
-            android:id="@+id/cat_btn_3"
+        <!-- Category 1 -->
+        <FrameLayout
+            android:id="@+id/cat_container_1"
             android:layout_width="38dp"
             android:layout_height="38dp"
-            android:gravity="center"
-            android:textColor="#FFFFFF"
-            android:textSize="11sp"
-            android:textStyle="bold"
-            android:visibility="gone" />
+            android:layout_marginBottom="6dp">
+
+            <ImageView
+                android:id="@+id/cat_bg_1"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:src="@drawable/pill_inactive" />
+
+            <TextView
+                android:id="@+id/cat_text_1"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:textColor="#FFFFFF"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </FrameLayout>
+
+        <!-- Category 2 -->
+        <FrameLayout
+            android:id="@+id/cat_container_2"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:layout_marginBottom="6dp">
+
+            <ImageView
+                android:id="@+id/cat_bg_2"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:src="@drawable/pill_inactive" />
+
+            <TextView
+                android:id="@+id/cat_text_2"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:textColor="#FFFFFF"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </FrameLayout>
+
+        <!-- Category 3 -->
+        <FrameLayout
+            android:id="@+id/cat_container_3"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:visibility="gone">
+
+            <ImageView
+                android:id="@+id/cat_bg_3"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:src="@drawable/pill_inactive" />
+
+            <TextView
+                android:id="@+id/cat_text_3"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:textColor="#FFFFFF"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </FrameLayout>
     </LinearLayout>
 </LinearLayout>
