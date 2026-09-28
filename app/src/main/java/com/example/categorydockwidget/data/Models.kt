@@ -30,7 +30,6 @@ object WidgetKeys {
 }
 
 object AppIconHelper {
-    // Cache up to 40 app icon bitmaps in RAM so they are never re-decoded on tap
     private val iconCache = LruCache<String, Bitmap>(40)
     private val intentCache = HashMap<String, Intent?>()
 
@@ -41,12 +40,10 @@ object AppIconHelper {
     }
 
     fun getAppBitmap(context: Context, packageName: String): Bitmap? {
-        // Return instantly from memory if cached
         iconCache.get(packageName)?.let { return it }
 
         return try {
             val drawable = context.packageManager.getApplicationIcon(packageName)
-            // Cap at 96x96 px (plenty sharp for 48dp widget icons, but uses 75% less Binder memory)
             val size = 96
             val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(bitmap)
