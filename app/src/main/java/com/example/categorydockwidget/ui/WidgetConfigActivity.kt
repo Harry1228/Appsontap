@@ -100,6 +100,8 @@ fun MainScreen(
 
     var selectedMainTab by remember { mutableIntStateOf(0) }
     var showSettingsDialog by remember { mutableStateOf(false) }
+    var showAddCategoryDialog by remember { mutableStateOf(false) }
+    var newCategoryName by remember { mutableStateOf("") }
 
     var categories by remember {
         val rawJson = prefs.getString("categories_json", null)
@@ -141,7 +143,7 @@ fun MainScreen(
 
     val safeIndex = activeCategoryIndex.coerceIn(0, (categories.size - 1).coerceAtLeast(0))
     val activeCategory = categories.getOrNull(safeIndex) ?: WidgetKeys.DEFAULT_CATEGORIES.first()
-    
+
     val selectedPackageSet = remember(activeCategory.packageNames) {
         activeCategory.packageNames.toSet()
     }
@@ -204,6 +206,7 @@ fun MainScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
+            // Main Top Tabs: Category vs Sidebar
             TabRow(
                 selectedTabIndex = selectedMainTab,
                 containerColor = Color(0xFF181820),
@@ -234,6 +237,7 @@ fun MainScreen(
             }
 
             if (selectedMainTab == 0) {
+                // Category Switcher Tabs
                 ScrollableTabRow(
                     selectedTabIndex = safeIndex,
                     containerColor = Color(0xFF15151C),
@@ -249,13 +253,68 @@ fun MainScreen(
                     }
                 }
 
+                // Dynamic Category Controls: Add (+) & Delete
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "${activeCategory.name} (${activeCategory.packageNames.size}/8 apps)",
+                        color = Color(0xFFAAAAAF),
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 13.sp
+                    )
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Delete category button (active when more than 1 category exists)
+                        if (categories.size > 1) {
+                            TextButton(
+                                onClick = {
+                                    val updated = categories.toMutableList()
+                                    updated.removeAt(safeIndex)
+                                    categories = updated
+                                    activeCategoryIndex = (safeIndex - 1).coerceAtLeast(0)
+                                },
+                                colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFEF4444)),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text("Delete", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        // Add category button (caps at 4 to fit widget dock)
+                        Button(
+                            onClick = {
+                                if (categories.size >= 4) {
+                                    Toast.makeText(context, "Maximum 4 categories for widget dock", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    newCategoryName = ""
+                                    showAddCategoryDialog = true
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF282834)),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text("+ Add Category", color = Color(0xFF3B82F6), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                // Search Bar
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
                     placeholder = { Text("Search installed apps...", color = Color.Gray, fontSize = 14.sp) },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
                     shape = RoundedCornerShape(12.dp),
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
@@ -266,13 +325,6 @@ fun MainScreen(
                         focusedTextColor = Color.White,
                         unfocusedTextColor = Color.White
                     )
-                )
-
-                Text(
-                    text = "Assigned to ${activeCategory.name} (${activeCategory.packageNames.size}/8):",
-                    color = Color(0xFFAAAAAF),
-                    fontSize = 13.sp,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
                 )
 
                 if (isLoading) {
@@ -400,13 +452,14 @@ fun MainScreen(
         }
     }
 
-    if (showSettingsDialog) {
+    // Add Category Dialog
+    if (showAddCategoryDialog) {
         AlertDialog(
-            onDismissRequest = { showSettingsDialog = false },
+            onDismissRequest = { showAddCategoryDialog = false },
             containerColor = Color(0xFF1E1E26),
             title = {
                 Text(
-                    text = "Apps on Tap",
+                    text = "New Category",
                     fontWeight = FontWeight.Bold,
                     color = Color.White
                 )
@@ -414,79 +467,6 @@ fun MainScreen(
             text = {
                 Column {
                     Text(
-                        text = "Version 1.0.0 (High Performance)",
+                        text = "Enter category name (e.g. Games, Finance, Tools):",
                         color = Color.Gray,
-                        fontSize = 14.sp
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = "Zero-latency native Android widget with optimized local catalog caching.",
-                        color = Color.White,
-                        fontSize = 13.sp
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Button(
-                        onClick = {
-                            categories = WidgetKeys.DEFAULT_CATEGORIES
-                            selectedAccentColor = "#3B82F6"
-                            selectedRadius = 24
-                            showSettingsDialog = false
-                            Toast.makeText(context, "Reset to defaults. Tap Save to apply.", Toast.LENGTH_SHORT).show()
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333340)),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text("Reset to Defaults", color = Color.White)
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showSettingsDialog = false }) {
-                    Text("Close", color = Color(0xFF3B82F6))
-                }
-            }
-        )
-    }
-}
-
-@Composable
-private fun AppItemRow(
-    appName: String,
-    packageName: String,
-    isChecked: Boolean,
-    onToggle: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 3.dp)
-            .background(Color(0xFF1B1B22), RoundedCornerShape(12.dp))
-            .clickable(onClick = onToggle)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = appName,
-                color = Color.White,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1
-            )
-            Text(
-                text = packageName,
-                color = Color.Gray,
-                fontSize = 11.sp,
-                maxLines = 1
-            )
-        }
-        Checkbox(
-            checked = isChecked,
-            onCheckedChange = null,
-            colors = CheckboxDefaults.colors(
-                checkedColor = Color(0xFF3B82F6),
-                uncheckedColor = Color(0xFF555560)
-            )
-        )
-    }
-}
+            
