@@ -1,8 +1,6 @@
 package com.example.categorydockwidget.widget
 
-import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -89,8 +87,8 @@ class CategoryWidget : GlanceAppWidget() {
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = "Tap ⚙ to add apps",
-                                style = TextStyle(color = ColorProvider(Color.Gray), fontSize = 13.sp)
+                                text = "Open Apps on Tap app to configure",
+                                style = TextStyle(color = ColorProvider(Color.Gray), fontSize = 12.sp)
                             )
                         }
                     } else {
@@ -127,7 +125,7 @@ class CategoryWidget : GlanceAppWidget() {
                         .background(ColorProvider(Color(0x22FFFFFF)))
                 )
 
-                // Right pane: Category selector dock
+                // Right pane: Clean Category Selector Dock
                 Column(
                     modifier = GlanceModifier
                         .width(52.dp)
@@ -163,26 +161,7 @@ class CategoryWidget : GlanceAppWidget() {
                                 )
                             )
                         }
-                        Spacer(modifier = GlanceModifier.height(6.dp))
-                    }
-
-                    val configIntent = Intent().apply {
-                        component = ComponentName(context.packageName, "com.example.categorydockwidget.ui.WidgetConfigActivity")
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                    }
-
-                    Box(
-                        modifier = GlanceModifier
-                            .size(32.dp)
-                            .cornerRadius(16.dp)
-                            .background(ColorProvider(Color(0x33FFFFFF)))
-                            .clickable(actionStartActivity(configIntent)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "⚙",
-                            style = TextStyle(color = ColorProvider(Color.White), fontSize = 14.sp)
-                        )
+                        Spacer(modifier = GlanceModifier.height(8.dp))
                     }
                 }
             }
