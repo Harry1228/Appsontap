@@ -9,19 +9,23 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.categorydockwidget.R
 import com.example.categorydockwidget.data.AppModel
 import com.example.categorydockwidget.data.Category
 import com.example.categorydockwidget.data.WidgetKeys
@@ -45,11 +49,11 @@ class WidgetConfigActivity : ComponentActivity() {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = Color(0xFF121217)
+                    color = Color(0xFF111116)
                 ) {
-                    ConfigScreen(
-                        onSave = { updatedCategories ->
-                            saveAndSync(updatedCategories, appWidgetId)
+                    MainScreen(
+                        onSave = { updatedCategories, accentColorHex, cornerRadius ->
+                            saveAndSync(updatedCategories, accentColorHex, cornerRadius, appWidgetId)
                         }
                     )
                 }
@@ -57,15 +61,23 @@ class WidgetConfigActivity : ComponentActivity() {
         }
     }
 
-    private fun saveAndSync(categories: List<Category>, appWidgetId: Int) {
+    private fun saveAndSync(
+        categories: List<Category>,
+        accentColorHex: String,
+        cornerRadius: Int,
+        appWidgetId: Int
+    ) {
         val json = Gson().toJson(categories)
         val prefs = getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
-        prefs.edit().putString("categories_json", json).apply()
+        prefs.edit()
+            .putString("categories_json", json)
+            .putString("accent_color", accentColorHex)
+            .putInt("corner_radius", cornerRadius)
+            .apply()
 
-        // Instantly notify all home screen widgets
         CategoryWidgetProvider.updateAllWidgets(this)
 
-        Toast.makeText(this, "Widgets updated!", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Settings Applied to Widgets!", Toast.LENGTH_SHORT).show()
         if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
             val resultValue = Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
             setResult(Activity.RESULT_OK, resultValue)
@@ -76,21 +88,37 @@ class WidgetConfigActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ConfigScreen(onSave: (List<Category>) -> Unit) {
+fun MainScreen(
+    onSave: (List<Category>, String, Int) -> Unit
+) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE) }
+
+    var selectedMainTab by remember { mutableIntStateOf(0) } // 0 = Category, 1 = Sidebar
+    var showSettingsDialog by remember { mutableStateOf(false) }
+
+    // Categories State
     var categories by remember {
-        val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
         val rawJson = prefs.getString("categories_json", null)
-        val initialList = if (rawJson != null) {
+        val initial = if (rawJson != null) {
             val type = object : TypeToken<List<Category>>() {}.type
             Gson().fromJson<List<Category>>(rawJson, type)
         } else {
             WidgetKeys.DEFAULT_CATEGORIES
         }
-        mutableStateOf(initialList)
+        mutableStateOf(initial)
+    }
+    var activeCategoryIndex by remember { mutableIntStateOf(0) }
+
+    // Sidebar Customization State
+    var selectedAccentColor by remember {
+        mutableStateOf(prefs.getString("accent_color", "#3B82F6") ?: "#3B82F6")
+    }
+    var selectedRadius by remember {
+        mutableIntStateOf(prefs.getInt("corner_radius", 24))
     }
 
-    var selectedCategoryIndex by remember { mutableIntStateOf(0) }
+    // App List State
     var installedApps by remember { mutableStateOf<List<AppModel>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
 
@@ -113,124 +141,328 @@ fun ConfigScreen(onSave: (List<Category>) -> Unit) {
         }
     }
 
-    val activeCategory = categories.getOrNull(selectedCategoryIndex) ?: categories.first()
-
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Apps on Tap Settings", fontWeight = FontWeight.Bold) },
+                title = {
+                    Text(
+                        text = "Apps on Tap",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp,
+                        color = Color.White
+                    )
+                },
+                actions = {
+                    IconButton(onClick = { showSettingsDialog = true }) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_settings),
+                            contentDescription = "Settings",
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFF1E1E26),
-                    titleContentColor = Color.White
+                    containerColor = Color(0xFF181820)
                 )
             )
         },
         bottomBar = {
             Surface(
-                color = Color(0xFF1E1E26),
+                color = Color(0xFF181820),
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Button(
-                    onClick = { onSave(categories) },
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
-                    shape = RoundedCornerShape(16.dp),
+                    onClick = { onSave(categories, selectedAccentColor, selectedRadius) },
+                    modifier = Modifier.fillMaxWidth().height(50.dp),
+                    shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6))
                 ) {
-                    Text("Save & Update Widgets", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Save & Apply Changes", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
         },
-        containerColor = Color(0xFF121217)
+        containerColor = Color(0xFF111116)
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            ScrollableTabRow(
-                selectedTabIndex = selectedCategoryIndex,
+            // 2 Primary Tabs: Category and Sidebar
+            TabRow(
+                selectedTabIndex = selectedMainTab,
                 containerColor = Color(0xFF181820),
-                contentColor = Color.White,
-                edgePadding = 16.dp
+                contentColor = Color.White
             ) {
-                categories.forEachIndexed { index, category ->
-                    Tab(
-                        selected = selectedCategoryIndex == index,
-                        onClick = { selectedCategoryIndex = index },
-                        text = {
-                            Text(
-                                text = category.name,
-                                fontWeight = if (selectedCategoryIndex == index) FontWeight.Bold else FontWeight.Normal
-                            )
+                Tab(
+                    selected = selectedMainTab == 0,
+                    onClick = { selectedMainTab = 0 },
+                    text = {
+                        Text(
+                            text = "Category",
+                            fontWeight = if (selectedMainTab == 0) FontWeight.Bold else FontWeight.Normal,
+                            fontSize = 15.sp
+                        )
+                    }
+                )
+                Tab(
+                    selected = selectedMainTab == 1,
+                    onClick = { selectedMainTab = 1 },
+                    text = {
+                        Text(
+                            text = "Sidebar",
+                            fontWeight = if (selectedMainTab == 1) FontWeight.Bold else FontWeight.Normal,
+                            fontSize = 15.sp
+                        )
+                    }
+                )
+            }
+
+            // Tab 1: Category Configuration Screen
+            if (selectedMainTab == 0) {
+                val activeCategory = categories.getOrNull(activeCategoryIndex) ?: categories.first()
+
+                // Sub-Tabs for each category
+                ScrollableTabRow(
+                    selectedTabIndex = activeCategoryIndex,
+                    containerColor = Color(0xFF15151C),
+                    contentColor = Color.White,
+                    edgePadding = 16.dp
+                ) {
+                    categories.forEachIndexed { index, cat ->
+                        Tab(
+                            selected = activeCategoryIndex == index,
+                            onClick = { activeCategoryIndex = index },
+                            text = { Text(cat.name) }
+                        )
+                    }
+                }
+
+                Text(
+                    text = "Apps assigned to \"${activeCategory.name}\" (${activeCategory.packageNames.size}/8):",
+                    color = Color(0xFFAAAAAF),
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                )
+
+                if (isLoading) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = Color(0xFF3B82F6))
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
+                    ) {
+                        items(installedApps) { app ->
+                            val isChecked = activeCategory.packageNames.contains(app.packageName)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
+                                    .background(Color(0xFF1B1B22), RoundedCornerShape(12.dp))
+                                    .clickable {
+                                        val updatedList = if (isChecked) {
+                                            activeCategory.packageNames - app.packageName
+                                        } else {
+                                            if (activeCategory.packageNames.size >= 8) {
+                                                Toast.makeText(context, "Max 8 apps per category", Toast.LENGTH_SHORT).show()
+                                                activeCategory.packageNames
+                                            } else {
+                                                activeCategory.packageNames + app.packageName
+                                            }
+                                        }
+                                        categories = categories.toMutableList().also { list ->
+                                            list[activeCategoryIndex] = activeCategory.copy(packageNames = updatedList)
+                                        }
+                                    }
+                                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = app.appName,
+                                        color = Color.White,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Text(
+                                        text = app.packageName,
+                                        color = Color.Gray,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                                Checkbox(
+                                    checked = isChecked,
+                                    onCheckedChange = null,
+                                    colors = CheckboxDefaults.colors(
+                                        checkedColor = Color(0xFF3B82F6),
+                                        uncheckedColor = Color.Gray
+                                    )
+                                )
+                            }
                         }
-                    )
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = "Select apps for \"${activeCategory.name}\" (${activeCategory.packageNames.size} selected):",
-                color = Color(0xFFAAAAAF),
-                fontSize = 14.sp,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-            )
-
-            if (isLoading) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = Color(0xFF3B82F6))
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+            // Tab 2: Sidebar Customization Screen
+            if (selectedMainTab == 1) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp)
                 ) {
-                    items(installedApps) { app ->
-                        val isChecked = activeCategory.packageNames.contains(app.packageName)
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp)
-                                .background(Color(0xFF1C1C24), RoundedCornerShape(12.dp))
-                                .clickable {
-                                    val updatedList = if (isChecked) {
-                                        activeCategory.packageNames - app.packageName
-                                    } else {
-                                        activeCategory.packageNames + app.packageName
-                                    }
-                                    categories = categories.toMutableList().also { list ->
-                                        list[selectedCategoryIndex] = activeCategory.copy(packageNames = updatedList)
-                                    }
-                                }
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Active Pill Accent Color",
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 16.sp
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    val colorOptions = listOf(
+                        "#3B82F6" to "Blue",
+                        "#8B5CF6" to "Purple",
+                        "#10B981" to "Emerald",
+                        "#EF4444" to "Red",
+                        "#F59E0B" to "Amber",
+                        "#EC4899" to "Pink"
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        colorOptions.forEach { (hex, _) ->
+                            val color = Color(android.graphics.Color.parseColor(hex))
+                            val isSelected = selectedAccentColor.equals(hex, ignoreCase = true)
+
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .background(color, CircleShape)
+                                    .border(
+                                        width = if (isSelected) 3.dp else 0.dp,
+                                        color = if (isSelected) Color.White else Color.Transparent,
+                                        shape = CircleShape
+                                    )
+                                    .clickable { selectedAccentColor = hex }
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(28.dp))
+
+                    Text(
+                        text = "Widget Corner Radius",
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 16.sp
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        listOf(16 to "Rounded", 24 to "Pill Soft", 32 to "Curved").forEach { (radius, label) ->
+                            val isSelected = selectedRadius == radius
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .background(
+                                        if (isSelected) Color(0xFF3B82F6) else Color(0xFF1B1B22),
+                                        RoundedCornerShape(12.dp)
+                                    )
+                                    .clickable { selectedRadius = radius }
+                                    .padding(vertical = 12.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
                                 Text(
-                                    text = app.appName,
-                                    color = Color.White,
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
-                                Text(
-                                    text = app.packageName,
-                                    color = Color.Gray,
-                                    fontSize = 11.sp
+                                    text = label,
+                                    color = if (isSelected) Color.White else Color.Gray,
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 13.sp
                                 )
                             }
-                            Checkbox(
-                                checked = isChecked,
-                                onCheckedChange = null,
-                                colors = CheckboxDefaults.colors(
-                                    checkedColor = Color(0xFF3B82F6),
-                                    uncheckedColor = Color.Gray
-                                )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(28.dp))
+
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF181820)),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                text = "Dock Orientation",
+                                color = Color.White,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 15.sp
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Right-docked (Fixed for single-hand thumb reach)",
+                                color = Color.Gray,
+                                fontSize = 13.sp
                             )
                         }
                     }
                 }
             }
         }
+    }
+
+    // Top-Right Settings Dialog
+    if (showSettingsDialog) {
+        AlertDialog(
+            onDismissRequest = { showSettingsDialog = false },
+            containerColor = Color(0xFF1E1E26),
+            title = {
+                Text(
+                    text = "Apps on Tap",
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "Version 1.0.0 (Open Source)",
+                        color = Color.Gray,
+                        fontSize = 14.sp
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "High-speed native Android widget with zero-latency category switching.",
+                        color = Color.White,
+                        fontSize = 13.sp
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = {
+                            categories = WidgetKeys.DEFAULT_CATEGORIES
+                            selectedAccentColor = "#3B82F6"
+                            selectedRadius = 24
+                            showSettingsDialog = false
+                            Toast.makeText(context, "Reset to defaults. Tap Save to apply.", Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333340)),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("Reset to Defaults", color = Color.White)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showSettingsDialog = false }) {
+                    Text("Close", color = Color(0xFF3B82F6))
+                }
+            }
+        )
     }
 }
