@@ -77,7 +77,7 @@ class WidgetConfigActivity : ComponentActivity() {
 
         CategoryWidgetProvider.updateAllWidgets(this)
 
-        Toast.makeText(this, "Settings Applied to Widgets!", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Settings Applied!", Toast.LENGTH_SHORT).show()
         if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
             val resultValue = Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
             setResult(Activity.RESULT_OK, resultValue)
@@ -94,10 +94,9 @@ fun MainScreen(
     val context = androidx.compose.ui.platform.LocalContext.current
     val prefs = remember { context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE) }
 
-    var selectedMainTab by remember { mutableIntStateOf(0) } // 0 = Category, 1 = Sidebar
+    var selectedMainTab by remember { mutableIntStateOf(0) }
     var showSettingsDialog by remember { mutableStateOf(false) }
 
-    // Categories State
     var categories by remember {
         val rawJson = prefs.getString("categories_json", null)
         val initial = if (rawJson != null) {
@@ -110,7 +109,6 @@ fun MainScreen(
     }
     var activeCategoryIndex by remember { mutableIntStateOf(0) }
 
-    // Sidebar Customization State
     var selectedAccentColor by remember {
         mutableStateOf(prefs.getString("accent_color", "#3B82F6") ?: "#3B82F6")
     }
@@ -118,8 +116,8 @@ fun MainScreen(
         mutableIntStateOf(prefs.getInt("corner_radius", 24))
     }
 
-    // App List State
     var installedApps by remember { mutableStateOf<List<AppModel>>(emptyList()) }
+    var searchQuery by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
@@ -138,6 +136,19 @@ fun MainScreen(
 
             installedApps = apps
             isLoading = false
+        }
+    }
+
+    val activeCategory = categories.getOrNull(activeCategoryIndex) ?: categories.first()
+    val selectedPackageSet = remember(activeCategory.packageNames) {
+        activeCategory.packageNames.toSet()
+    }
+
+    val filteredApps = remember(searchQuery, installedApps) {
+        if (searchQuery.isBlank()) installedApps
+        else installedApps.filter {
+            it.appName.contains(searchQuery, ignoreCase = true) ||
+            it.packageName.contains(searchQuery, ignoreCase = true)
         }
     }
 
@@ -190,7 +201,6 @@ fun MainScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // 2 Primary Tabs: Category and Sidebar
             TabRow(
                 selectedTabIndex = selectedMainTab,
                 containerColor = Color(0xFF181820),
@@ -220,11 +230,7 @@ fun MainScreen(
                 )
             }
 
-            // Tab 1: Category Configuration Screen
             if (selectedMainTab == 0) {
-                val activeCategory = categories.getOrNull(activeCategoryIndex) ?: categories.first()
-
-                // Sub-Tabs for each category
                 ScrollableTabRow(
                     selectedTabIndex = activeCategoryIndex,
                     containerColor = Color(0xFF15151C),
@@ -240,11 +246,31 @@ fun MainScreen(
                     }
                 }
 
+                // Instant Search Filter Field
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Search installed apps...", color = Color.Gray, fontSize = 14.sp) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color(0xFF1B1B22),
+                        unfocusedContainerColor = Color(0xFF1B1B22),
+                        focusedBorderColor = Color(0xFF3B82F6),
+                        unfocusedBorderColor = Color(0xFF2C2C34),
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White
+                    )
+                )
+
                 Text(
-                    text = "Apps assigned to \"${activeCategory.name}\" (${activeCategory.packageNames.size}/8):",
+                    text = "Assigned to ${activeCategory.name} (${activeCategory.packageNames.size}/8):",
                     color = Color(0xFFAAAAAF),
                     fontSize = 13.sp,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
                 )
 
                 if (isLoading) {
@@ -254,61 +280,38 @@ fun MainScreen(
                 } else {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
                     ) {
-                        items(installedApps) { app ->
-                            val isChecked = activeCategory.packageNames.contains(app.packageName)
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp)
-                                    .background(Color(0xFF1B1B22), RoundedCornerShape(12.dp))
-                                    .clickable {
-                                        val updatedList = if (isChecked) {
-                                            activeCategory.packageNames - app.packageName
+                        items(
+                            items = filteredApps,
+                            key = { it.packageName }
+                        ) { app ->
+                            val isChecked = selectedPackageSet.contains(app.packageName)
+                            AppItemRow(
+                                appName = app.appName,
+                                packageName = app.packageName,
+                                isChecked = isChecked,
+                                onToggle = {
+                                    val updatedList = if (isChecked) {
+                                        activeCategory.packageNames - app.packageName
+                                    } else {
+                                        if (activeCategory.packageNames.size >= 8) {
+                                            Toast.makeText(context, "Max 8 apps per category", Toast.LENGTH_SHORT).show()
+                                            activeCategory.packageNames
                                         } else {
-                                            if (activeCategory.packageNames.size >= 8) {
-                                                Toast.makeText(context, "Max 8 apps per category", Toast.LENGTH_SHORT).show()
-                                                activeCategory.packageNames
-                                            } else {
-                                                activeCategory.packageNames + app.packageName
-                                            }
-                                        }
-                                        categories = categories.toMutableList().also { list ->
-                                            list[activeCategoryIndex] = activeCategory.copy(packageNames = updatedList)
+                                            activeCategory.packageNames + app.packageName
                                         }
                                     }
-                                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = app.appName,
-                                        color = Color.White,
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                    Text(
-                                        text = app.packageName,
-                                        color = Color.Gray,
-                                        fontSize = 11.sp
-                                    )
+                                    val updated = categories.toMutableList()
+                                    updated[activeCategoryIndex] = activeCategory.copy(packageNames = updatedList)
+                                    categories = updated
                                 }
-                                Checkbox(
-                                    checked = isChecked,
-                                    onCheckedChange = null,
-                                    colors = CheckboxDefaults.colors(
-                                        checkedColor = Color(0xFF3B82F6),
-                                        uncheckedColor = Color.Gray
-                                    )
-                                )
-                            }
+                            )
                         }
                     }
                 }
             }
 
-            // Tab 2: Sidebar Customization Screen
             if (selectedMainTab == 1) {
                 Column(
                     modifier = Modifier
@@ -390,34 +393,11 @@ fun MainScreen(
                             }
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(28.dp))
-
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF181820)),
-                        shape = RoundedCornerShape(14.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text(
-                                text = "Dock Orientation",
-                                color = Color.White,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 15.sp
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "Right-docked (Fixed for single-hand thumb reach)",
-                                color = Color.Gray,
-                                fontSize = 13.sp
-                            )
-                        }
-                    }
                 }
             }
         }
     }
 
-    // Top-Right Settings Dialog
     if (showSettingsDialog) {
         AlertDialog(
             onDismissRequest = { showSettingsDialog = false },
@@ -432,13 +412,13 @@ fun MainScreen(
             text = {
                 Column {
                     Text(
-                        text = "Version 1.0.0 (Open Source)",
+                        text = "Version 1.0.0 (High Performance)",
                         color = Color.Gray,
                         fontSize = 14.sp
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = "High-speed native Android widget with zero-latency category switching.",
+                        text = "Zero-latency native Android widget with optimized Jetpack Compose configuration.",
                         color = Color.White,
                         fontSize = 13.sp
                     )
@@ -463,6 +443,49 @@ fun MainScreen(
                     Text("Close", color = Color(0xFF3B82F6))
                 }
             }
+        )
+    }
+}
+
+// Isolated, fully skippable composable row
+@Composable
+private fun AppItemRow(
+    appName: String,
+    packageName: String,
+    isChecked: Boolean,
+    onToggle: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp)
+            .background(Color(0xFF1B1B22), RoundedCornerShape(12.dp))
+            .clickable(onClick = onToggle)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = appName,
+                color = Color.White,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1
+            )
+            Text(
+                text = packageName,
+                color = Color.Gray,
+                fontSize = 11.sp,
+                maxLines = 1
+            )
+        }
+        Checkbox(
+            checked = isChecked,
+            onCheckedChange = null,
+            colors = CheckboxDefaults.colors(
+                checkedColor = Color(0xFF3B82F6),
+                uncheckedColor = Color(0xFF555560)
+            )
         )
     }
 }
