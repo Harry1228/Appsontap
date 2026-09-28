@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.categorydockwidget.R
+import com.example.categorydockwidget.data.AppIconHelper
 import com.example.categorydockwidget.data.AppModel
 import com.example.categorydockwidget.data.AppRepository
 import com.example.categorydockwidget.data.Category
@@ -68,6 +69,9 @@ class WidgetConfigActivity : ComponentActivity() {
         cornerRadius: Int,
         appWidgetId: Int
     ) {
+        // Pre-bake icons to internal storage so cold starts are instant
+        AppIconHelper.prewarmIcons(this, categories)
+
         val json = Gson().toJson(categories)
         val prefs = getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
         prefs.edit()
@@ -117,13 +121,11 @@ fun MainScreen(
         mutableIntStateOf(prefs.getInt("corner_radius", 24))
     }
 
-    // 1. Instant Cache Fetch (0ms render time)
     val cachedList = remember { AppRepository.getCachedApps(context) }
     var installedApps by remember { mutableStateOf(cachedList) }
     var searchQuery by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(cachedList.isEmpty()) }
 
-    // 2. Non-blocking background sync
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             val freshApps = AppRepository.reloadApps(context)
