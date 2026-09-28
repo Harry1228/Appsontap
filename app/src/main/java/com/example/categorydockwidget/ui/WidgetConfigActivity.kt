@@ -2,8 +2,8 @@ package com.example.categorydockwidget.ui
 
 import android.app.Activity
 import android.appwidget.AppWidgetManager
+import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -22,15 +22,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.glance.appwidget.GlanceAppWidgetManager
-import androidx.glance.appwidget.state.updateAppWidgetState
 import com.example.categorydockwidget.data.AppModel
 import com.example.categorydockwidget.data.Category
 import com.example.categorydockwidget.data.WidgetKeys
-import com.example.categorydockwidget.widget.CategoryWidget
+import com.example.categorydockwidget.widget.CategoryWidgetProvider
 import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class WidgetConfigActivity : ComponentActivity() {
@@ -61,28 +59,18 @@ class WidgetConfigActivity : ComponentActivity() {
 
     private fun saveAndSync(categories: List<Category>, appWidgetId: Int) {
         val json = Gson().toJson(categories)
-        val context = this@WidgetConfigActivity
+        val prefs = getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putString("categories_json", json).apply()
 
-        kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
-            val manager = GlanceAppWidgetManager(context)
-            val glanceIds = manager.getGlanceIds(CategoryWidget::class.java)
+        // Instantly notify all home screen widgets
+        CategoryWidgetProvider.updateAllWidgets(this)
 
-            for (glanceId in glanceIds) {
-                updateAppWidgetState(context, glanceId) { prefs ->
-                    prefs[WidgetKeys.CATEGORIES_JSON] = json
-                }
-                CategoryWidget().update(context, glanceId)
-            }
-
-            withContext(Dispatchers.Main) {
-                Toast.makeText(context, "Widgets updated!", Toast.LENGTH_SHORT).show()
-                if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
-                    val resultValue = Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
-                    setResult(Activity.RESULT_OK, resultValue)
-                    finish()
-                }
-            }
+        Toast.makeText(this, "Widgets updated!", Toast.LENGTH_SHORT).show()
+        if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+            val resultValue = Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+            setResult(Activity.RESULT_OK, resultValue)
         }
+        finish()
     }
 }
 
@@ -90,7 +78,18 @@ class WidgetConfigActivity : ComponentActivity() {
 @Composable
 fun ConfigScreen(onSave: (List<Category>) -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    var categories by remember { mutableStateOf(WidgetKeys.DEFAULT_CATEGORIES) }
+    var categories by remember {
+        val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
+        val rawJson = prefs.getString("categories_json", null)
+        val initialList = if (rawJson != null) {
+            val type = object : TypeToken<List<Category>>() {}.type
+            Gson().fromJson<List<Category>>(rawJson, type)
+        } else {
+            WidgetKeys.DEFAULT_CATEGORIES
+        }
+        mutableStateOf(initialList)
+    }
+
     var selectedCategoryIndex by remember { mutableIntStateOf(0) }
     var installedApps by remember { mutableStateOf<List<AppModel>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
@@ -149,7 +148,6 @@ fun ConfigScreen(onSave: (List<Category>) -> Unit) {
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Category Tabs Row
             ScrollableTabRow(
                 selectedTabIndex = selectedCategoryIndex,
                 containerColor = Color(0xFF181820),

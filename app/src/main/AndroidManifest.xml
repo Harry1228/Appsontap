@@ -9,7 +9,7 @@
         android:label="Apps on Tap"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
-        <!-- Standalone App & Settings Screen -->
+        <!-- Standalone Configuration App -->
         <activity
             android:name=".ui.WidgetConfigActivity"
             android:exported="true">
@@ -22,17 +22,18 @@
             </intent-filter>
         </activity>
 
-        <!-- Home Screen Widget Receiver -->
+        <!-- Zero-Latency Native Widget Receiver -->
         <receiver
-            android:name=".widget.CategoryWidgetReceiver"
+            android:name=".widget.CategoryWidgetProvider"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.example.categorydockwidget.ACTION_SWITCH_CATEGORY" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/category_widget_info" />
-            </receiver>
+        </receiver>
 
     </application>
 </manifest>
