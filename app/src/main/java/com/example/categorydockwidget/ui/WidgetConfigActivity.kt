@@ -41,11 +41,13 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.categorydockwidget.R
 import com.example.categorydockwidget.data.AppIconHelper
 import com.example.categorydockwidget.data.AppModel
 import com.example.categorydockwidget.data.AppRepository
@@ -73,8 +75,9 @@ data class WidgetFullBackup(
     val sidebarPosition: String,
     val sidebarAlignment: String,
     val sidebarDisplayType: String,
-    val sidebarTextSizeSp: Int,
-    val sidebarIconSizeSp: Int,
+    val sidebarTextSizeSp: Int = 14,
+    val sidebarIconSizeSp: Int = 28,
+    val sidebarSizeSp: Int = 14,
     val categoryIconSizeDp: Int,
     val sidebarFontFamily: String,
     val unifiedIconStyle: String,
@@ -298,12 +301,11 @@ fun MainScreen(
     var sidebarPosition by remember { mutableStateOf(prefs.getString("sidebar_position", "left") ?: "left") }
     var sidebarAlignment by remember { mutableStateOf(prefs.getString("sidebar_alignment", "bottom") ?: "bottom") }
     var sidebarDisplayType by remember { mutableStateOf(prefs.getString("sidebar_display_type", "icons") ?: "icons") }
-    
-    // Separate Text and Icon Sliders
+
     var sidebarTextSizeSp by remember { mutableFloatStateOf(prefs.getInt("sidebar_text_size_sp", 14).toFloat()) }
     var sidebarIconSizeSp by remember { mutableFloatStateOf(prefs.getInt("sidebar_icon_size_sp", 28).toFloat()) }
     var categoryIconSizeDp by remember { mutableFloatStateOf(prefs.getInt("category_icon_size_dp", 46).toFloat()) }
-    
+
     var sidebarFont by remember { mutableStateOf(prefs.getString("sidebar_font_family", "sans-serif") ?: "sans-serif") }
     var unifiedIconStyle by remember {
         val saved = prefs.getString("unified_icon_style", "default") ?: "default"
@@ -488,6 +490,7 @@ fun MainScreen(
                     sidebarDisplayType = sidebarDisplayType,
                     sidebarTextSizeSp = sidebarTextSizeSp.toInt(),
                     sidebarIconSizeSp = sidebarIconSizeSp.toInt(),
+                    sidebarSizeSp = sidebarTextSizeSp.toInt(),
                     categoryIconSizeDp = categoryIconSizeDp.toInt(),
                     sidebarFontFamily = sidebarFont,
                     unifiedIconStyle = unifiedIconStyle,
@@ -502,7 +505,7 @@ fun MainScreen(
                     out.write(jsonContent.toByteArray(Charsets.UTF_8))
                 }
                 Toast.makeText(context, "Backup exported successfully!", Toast.LENGTH_SHORT).show()
-            } catch (e: Exception) {}
+            } catch (_: Exception) {}
         }
     }
 
@@ -540,11 +543,10 @@ fun MainScreen(
                         sidebarPosition = backupBundle.sidebarPosition
                         sidebarAlignment = backupBundle.sidebarAlignment
                         sidebarDisplayType = backupBundle.sidebarDisplayType
-                        
-                        // Handle backwards compatibility for single size sp
-                        sidebarTextSizeSp = backupBundle.sidebarTextSizeSp.toFloat().takeIf { it > 0f } ?: backupBundle.sidebarSizeSp.toFloat()
-                        sidebarIconSizeSp = backupBundle.sidebarIconSizeSp.toFloat().takeIf { it > 0f } ?: backupBundle.sidebarSizeSp.toFloat()
-                        
+
+                        sidebarTextSizeSp = (if (backupBundle.sidebarTextSizeSp > 0) backupBundle.sidebarTextSizeSp else backupBundle.sidebarSizeSp).toFloat()
+                        sidebarIconSizeSp = (if (backupBundle.sidebarIconSizeSp > 0) backupBundle.sidebarIconSizeSp else backupBundle.sidebarSizeSp).toFloat()
+
                         categoryIconSizeDp = backupBundle.categoryIconSizeDp.toFloat()
                         sidebarFont = backupBundle.sidebarFontFamily
                         unifiedIconStyle = backupBundle.unifiedIconStyle
@@ -577,7 +579,7 @@ fun MainScreen(
                         Toast.makeText(context, "Backup restored successfully!", Toast.LENGTH_SHORT).show()
                     }
                 }
-            } catch (e: Exception) {}
+            } catch (_: Exception) {}
         }
     }
 
@@ -712,7 +714,6 @@ fun MainScreen(
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Central Save & Apply Full-Width Action
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -759,7 +760,6 @@ fun MainScreen(
                 .padding(innerPadding)
         ) {
             when {
-                // 1. Category Detail Subpage
                 editingCategoryId != null && currentCategory != null -> {
                     Column(modifier = Modifier.fillMaxSize()) {
                         Card(
@@ -920,7 +920,6 @@ fun MainScreen(
                     }
                 }
 
-                // 2. Categories List Subpage
                 currentScreen == NovaScreen.CATEGORIES -> {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize().padding(16.dp),
@@ -1028,7 +1027,6 @@ fun MainScreen(
                     }
                 }
 
-                // 3. Side Bar Subpage
                 currentScreen == NovaScreen.SIDEBAR -> {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize().padding(16.dp),
@@ -1218,9 +1216,9 @@ fun MainScreen(
                                             inactiveTrackColor = theme.cardBorder
                                         )
                                     )
-                                    
+
                                     Spacer(modifier = Modifier.height(8.dp))
-                                    
+
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -1245,7 +1243,6 @@ fun MainScreen(
                     }
                 }
 
-                // 4. Animation Subpage
                 currentScreen == NovaScreen.ANIMATION -> {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize().padding(16.dp),
@@ -1278,7 +1275,6 @@ fun MainScreen(
                     }
                 }
 
-                // 5. Icons Subpage
                 currentScreen == NovaScreen.ICONS -> {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize().padding(16.dp),
@@ -1328,7 +1324,6 @@ fun MainScreen(
                     }
                 }
 
-                // 6. Backup Subpage
                 currentScreen == NovaScreen.BACKUP -> {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize().padding(16.dp),
@@ -1376,12 +1371,8 @@ fun MainScreen(
                     }
                 }
 
-                // MAIN SCREEN: Exact Nova Settings Vertical List
                 else -> {
-                    Column(
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        // Nova Rounded Search Pill
+                    Column(modifier = Modifier.fillMaxSize()) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1420,10 +1411,7 @@ fun MainScreen(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        // Vertical Settings List
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize()
-                        ) {
+                        LazyColumn(modifier = Modifier.fillMaxSize()) {
                             items(filteredMenuItems) { item ->
                                 val (title, subtitle, screen) = item
                                 NovaSettingsRow(
@@ -1448,7 +1436,6 @@ fun MainScreen(
         }
     }
 
-    // TOP-RIGHT PREFERENCES DIALOG (Light/Dark Theme + Reset)
     if (showSettingsDialog) {
         AlertDialog(
             onDismissRequest = { showSettingsDialog = false },
@@ -1520,7 +1507,6 @@ fun MainScreen(
         )
     }
 
-    // Reset Confirmation Dialog
     if (showResetConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showResetConfirmDialog = false },
@@ -1573,7 +1559,6 @@ fun MainScreen(
         )
     }
 
-    // Change Specific App Icon Dialog
     if (editingAppForIcon != null) {
         val app = editingAppForIcon!!
         AlertDialog(
@@ -1651,7 +1636,6 @@ fun MainScreen(
         )
     }
 
-    // Category Icon Dialog
     if (showIconDialog) {
         AlertDialog(
             onDismissRequest = { showIconDialog = false },
@@ -1710,7 +1694,6 @@ fun MainScreen(
         )
     }
 
-    // Sidebar Font Dialog
     if (showFontDialog) {
         AlertDialog(
             onDismissRequest = { showFontDialog = false },
@@ -1758,7 +1741,6 @@ fun MainScreen(
         )
     }
 
-    // Clock Font Dialog
     if (showClockFontDialog) {
         AlertDialog(
             onDismissRequest = { showClockFontDialog = false },
@@ -1806,7 +1788,6 @@ fun MainScreen(
         )
     }
 
-    // Add Category Dialog
     if (showAddCategoryDialog) {
         AlertDialog(
             onDismissRequest = { showAddCategoryDialog = false },
@@ -1863,7 +1844,6 @@ fun MainScreen(
         )
     }
 
-    // Rename Category Dialog
     if (showRenameDialog) {
         val currentCat = categories.firstOrNull { it.id == editingCategoryId }
         AlertDialog(
@@ -1914,7 +1894,6 @@ fun MainScreen(
     }
 }
 
-// NOVA LAUNCHER SETTINGS ROW COMPONENT
 @Composable
 fun NovaSettingsRow(
     title: String,
