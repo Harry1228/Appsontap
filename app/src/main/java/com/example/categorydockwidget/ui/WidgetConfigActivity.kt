@@ -12,10 +12,12 @@ import android.os.Bundle
 import android.util.Base64
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -30,17 +32,20 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.categorydockwidget.R
 import com.example.categorydockwidget.data.AppIconHelper
 import com.example.categorydockwidget.data.AppModel
 import com.example.categorydockwidget.data.AppRepository
@@ -78,17 +83,19 @@ data class WidgetFullBackup(
     val animationStyle: String = "fade"
 )
 
-// Theme Colors container for clean Light/Dark switching
-data class ConfigThemePalette(
+data class NovaThemePalette(
     val isDark: Boolean,
     val background: Color,
     val surface: Color,
+    val searchBarBg: Color,
     val cardBorder: Color,
     val primary: Color,
     val textPrimary: Color,
     val textSecondary: Color,
+    val iconTint: Color,
     val divider: Color,
-    val inputBackground: Color
+    val bottomBarBg: Color,
+    val pillActive: Color
 )
 
 class WidgetConfigActivity : ComponentActivity() {
@@ -103,36 +110,42 @@ class WidgetConfigActivity : ComponentActivity() {
 
         setContent {
             val prefs = remember { getSharedPreferences("widget_prefs", Context.MODE_PRIVATE) }
-            var isDarkTheme by remember { mutableStateOf(prefs.getBoolean("app_theme_dark", false)) }
+            var isDarkTheme by remember { mutableStateOf(prefs.getBoolean("app_theme_dark", true)) }
 
             val theme = if (isDarkTheme) {
-                ConfigThemePalette(
+                NovaThemePalette(
                     isDark = true,
-                    background = Color(0xFF111116),
-                    surface = Color(0xFF1B1B22),
-                    cardBorder = Color(0xFF282834),
-                    primary = Color(0xFFA78BFA),
-                    textPrimary = Color(0xFFF3F4F6),
-                    textSecondary = Color(0xFF9CA3AF),
-                    divider = Color(0xFF242430),
-                    inputBackground = Color(0xFF181820)
+                    background = Color(0xFF1E2029),
+                    surface = Color(0xFF262836),
+                    searchBarBg = Color(0xFF2B2D3A),
+                    cardBorder = Color(0xFF333647),
+                    primary = Color(0xFF9095A6),
+                    textPrimary = Color(0xFFF1F2F6),
+                    textSecondary = Color(0xFF8F94A6),
+                    iconTint = Color(0xFFB0B5C6),
+                    divider = Color(0xFF2C2F3E),
+                    bottomBarBg = Color(0xFF181A22),
+                    pillActive = Color(0xFF36394A)
                 )
             } else {
-                ConfigThemePalette(
+                NovaThemePalette(
                     isDark = false,
-                    background = Color(0xFFF8F7FC),
-                    surface = Color.White,
-                    cardBorder = Color(0xFFEDE9FE),
-                    primary = Color(0xFF7C3AED),
-                    textPrimary = Color(0xFF1E1B2E),
+                    background = Color(0xFFF4F5F9),
+                    surface = Color(0xFFFFFFFF),
+                    searchBarBg = Color(0xFFE5E7EB),
+                    cardBorder = Color(0xFFE2E4EB),
+                    primary = Color(0xFF4B5563),
+                    textPrimary = Color(0xFF1A1C23),
                     textSecondary = Color(0xFF6B7280),
-                    divider = Color(0xFFF3E8FF),
-                    inputBackground = Color.White
+                    iconTint = Color(0xFF4B5563),
+                    divider = Color(0xFFE5E7EB),
+                    bottomBarBg = Color(0xFFFFFFFF),
+                    pillActive = Color(0xFFE2E4EB)
                 )
             }
 
             MaterialTheme(
-                colorScheme = if (isDarkTheme) darkColorScheme(primary = theme.primary) else lightColorScheme(primary = theme.primary)
+                colorScheme = if (isDarkTheme) darkColorScheme() else lightColorScheme()
             ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
@@ -201,8 +214,17 @@ class WidgetConfigActivity : ComponentActivity() {
     }
 }
 
+enum class NovaScreen {
+    HOME,
+    CATEGORIES,
+    SIDEBAR,
+    ANIMATION,
+    ICONS,
+    BACKUP
+}
+
 @Composable
-fun CategoryBadgeView(category: Category, size: Dp, theme: ConfigThemePalette, modifier: Modifier = Modifier) {
+fun CategoryBadgeView(category: Category, size: Dp, theme: NovaThemePalette, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val galleryBitmap = remember(category.icon) {
         if (category.isGallery && category.galleryFileName != null) {
@@ -214,7 +236,7 @@ fun CategoryBadgeView(category: Category, size: Dp, theme: ConfigThemePalette, m
     Box(
         modifier = modifier
             .size(size)
-            .background(if (theme.isDark) Color(0xFF282834) else Color(0xFFF3E8FF), CircleShape),
+            .background(if (theme.isDark) Color(0xFF333647) else Color(0xFFE2E4EB), CircleShape),
         contentAlignment = Alignment.Center
     ) {
         if (galleryBitmap != null) {
@@ -231,7 +253,7 @@ fun CategoryBadgeView(category: Category, size: Dp, theme: ConfigThemePalette, m
                 text = category.displayBadge,
                 fontSize = if (category.displayBadge.length > 2) (size.value * 0.28f).sp else (size.value * 0.40f).sp,
                 fontWeight = FontWeight.Bold,
-                color = theme.primary,
+                color = theme.textPrimary,
                 maxLines = 1,
                 softWrap = false
             )
@@ -242,17 +264,18 @@ fun CategoryBadgeView(category: Category, size: Dp, theme: ConfigThemePalette, m
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
-    theme: ConfigThemePalette,
+    theme: NovaThemePalette,
     onToggleTheme: (Boolean) -> Unit,
     onSave: (List<Category>, String, String, String, Int, Int, String, String, Boolean, String, Int, String) -> Unit
 ) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE) }
 
-    var selectedMainTab by remember { mutableIntStateOf(0) }
+    var currentScreen by remember { mutableStateOf(NovaScreen.HOME) }
     var editingCategoryId by remember { mutableStateOf<String?>(null) }
 
-    // Dialog States
+    var mainSearchQuery by remember { mutableStateOf("") }
+
     var showSettingsDialog by remember { mutableStateOf(false) }
     var showResetConfirmDialog by remember { mutableStateOf(false) }
     var showAddCategoryDialog by remember { mutableStateOf(false) }
@@ -263,7 +286,6 @@ fun MainScreen(
     var showFontDialog by remember { mutableStateOf(false) }
     var showClockFontDialog by remember { mutableStateOf(false) }
 
-    // App-specific icon customization state
     var editingAppForIcon by remember { mutableStateOf<AppModel?>(null) }
     var iconUpdateCounter by remember { mutableIntStateOf(0) }
 
@@ -308,7 +330,6 @@ fun MainScreen(
         mutableStateOf<List<AppModel>>(emptyList())
     }
 
-    // Animation Style State
     var animationStyle by remember {
         mutableStateOf(prefs.getString("animation_style", "fade") ?: "fade")
     }
@@ -325,7 +346,7 @@ fun MainScreen(
 
     val cachedList = remember { AppRepository.getCachedApps(context) }
     var installedApps by remember { mutableStateOf(cachedList) }
-    var searchQuery by remember { mutableStateOf("") }
+    var appSearchQuery by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(cachedList.isEmpty()) }
 
     LaunchedEffect(Unit) {
@@ -340,14 +361,21 @@ fun MainScreen(
         }
     }
 
+    BackHandler(enabled = currentScreen != NovaScreen.HOME || editingCategoryId != null) {
+        if (editingCategoryId != null) {
+            editingCategoryId = null
+        } else {
+            currentScreen = NovaScreen.HOME
+        }
+    }
+
     val currentCategory = categories.firstOrNull { it.id == editingCategoryId }
     val selectedSet = remember(currentCategory?.packageNames, editingCategoryId) {
         currentCategory?.packageNames?.toSet() ?: emptySet()
     }
 
-    // Filter & Sort: Selected apps floated to the top
-    val filteredApps = remember(searchQuery, installedApps, selectedSet) {
-        val query = searchQuery.trim().lowercase()
+    val filteredApps = remember(appSearchQuery, installedApps, selectedSet) {
+        val query = appSearchQuery.trim().lowercase()
         val list = if (query.isBlank()) {
             installedApps
         } else {
@@ -460,7 +488,6 @@ fun MainScreen(
         }
     }
 
-    // Backup Export
     val exportBackupLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
     ) { uri: Uri? ->
@@ -509,7 +536,6 @@ fun MainScreen(
         }
     }
 
-    // Backup Restore
     val importBackupLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
@@ -627,124 +653,167 @@ fun MainScreen(
         return fontOptions.firstOrNull { it.first == fontKey }?.second ?: "Modern Sans"
     }
 
-    val tabTitles = listOf("Categories", "Side Bar", "Animation", "Icons", "Backup")
+    val menuItems = listOf(
+        Triple("Categories", "Configure category tabs, app list, and shortcuts", NovaScreen.CATEGORIES),
+        Triple("Side bar", "Dock position, clock settings, alignment, and scale", NovaScreen.SIDEBAR),
+        Triple("Animation", "Transition styles: fade, slide, zoom, and snappy", NovaScreen.ANIMATION),
+        Triple("Icons", "App icon packs, custom overrides, and default styling", NovaScreen.ICONS),
+        Triple("Backup & restore", "Export configuration, restore from file, and data backup", NovaScreen.BACKUP)
+    )
+
+    val filteredMenuItems = remember(mainSearchQuery) {
+        val q = mainSearchQuery.trim().lowercase()
+        if (q.isBlank()) {
+            menuItems
+        } else {
+            menuItems.filter {
+                it.first.lowercase().contains(q) || it.second.lowercase().contains(q)
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
+            if (currentScreen == NovaScreen.HOME && editingCategoryId == null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 18.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
                         text = "Apps Widget",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 22.sp,
+                        fontSize = 28.sp,
                         color = theme.textPrimary
                     )
-                },
-                actions = {
                     IconButton(onClick = { showSettingsDialog = true }) {
-                        Icon(
-                            painter = painterResource(id = R.drawable.ic_settings),
-                            contentDescription = "Settings",
-                            tint = theme.primary,
-                            modifier = Modifier.size(24.dp)
-                        )
+                        NovaOutlineIcon(type = IconType.SETTINGS, tint = theme.iconTint, size = 26.dp)
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = theme.surface)
-            )
-        },
-        bottomBar = {
-            Surface(
-                color = theme.surface,
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                shape = RoundedCornerShape(16.dp),
-                shadowElevation = 6.dp
-            ) {
-                Button(
-                    onClick = {
-                        onSave(
-                            categories,
-                            sidebarPosition,
-                            sidebarAlignment,
-                            sidebarDisplayType,
-                            sidebarSizeSp.toInt(),
-                            categoryIconSizeDp.toInt(),
-                            sidebarFont,
-                            unifiedIconStyle,
-                            clockEnabled,
-                            clockFont,
-                            clockSizeSp.toInt(),
-                            animationStyle
+                }
+            } else {
+                TopAppBar(
+                    title = {
+                        val title = when {
+                            editingCategoryId != null -> currentCategory?.name ?: "Category"
+                            currentScreen == NovaScreen.CATEGORIES -> "Categories"
+                            currentScreen == NovaScreen.SIDEBAR -> "Side bar"
+                            currentScreen == NovaScreen.ANIMATION -> "Animation"
+                            currentScreen == NovaScreen.ICONS -> "Icons"
+                            currentScreen == NovaScreen.BACKUP -> "Backup & restore"
+                            else -> "Settings"
+                        }
+                        Text(
+                            text = title,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp,
+                            color = theme.textPrimary
                         )
                     },
-                    modifier = Modifier.fillMaxWidth().height(52.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = theme.primary)
+                    navigationIcon = {
+                        IconButton(onClick = {
+                            if (editingCategoryId != null) {
+                                editingCategoryId = null
+                            } else {
+                                currentScreen = NovaScreen.HOME
+                            }
+                        }) {
+                            Text("←", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = theme.textPrimary)
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { showSettingsDialog = true }) {
+                            NovaOutlineIcon(type = IconType.SETTINGS, tint = theme.iconTint, size = 24.dp)
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = theme.background)
+                )
+            }
+        },
+        bottomBar = {
+            // Nova Bottom Navigation Bar
+            Surface(
+                color = theme.bottomBarBg,
+                modifier = Modifier.fillMaxWidth().height(68.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Save & Apply Changes", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    // Settings Pill Tab (Active indicator)
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(22.dp))
+                            .background(theme.pillActive)
+                            .clickable {
+                                editingCategoryId = null
+                                currentScreen = NovaScreen.HOME
+                            }
+                            .padding(horizontal = 20.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        NovaOutlineIcon(type = IconType.SETTINGS, tint = theme.textPrimary, size = 18.dp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Settings",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                            color = theme.textPrimary
+                        )
+                    }
+
+                    // Save & Apply Action
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(22.dp))
+                            .clickable {
+                                onSave(
+                                    categories,
+                                    sidebarPosition,
+                                    sidebarAlignment,
+                                    sidebarDisplayType,
+                                    sidebarSizeSp.toInt(),
+                                    categoryIconSizeDp.toInt(),
+                                    sidebarFont,
+                                    unifiedIconStyle,
+                                    clockEnabled,
+                                    clockFont,
+                                    clockSizeSp.toInt(),
+                                    animationStyle
+                                )
+                            }
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        NovaOutlineIcon(type = IconType.CHECK, tint = theme.textSecondary, size = 18.dp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Apply",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                            color = theme.textSecondary
+                        )
+                    }
                 }
             }
         },
         containerColor = theme.background
     ) { innerPadding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Scrollable TabRow containing the 5 ordered tabs
-            ScrollableTabRow(
-                selectedTabIndex = selectedMainTab,
-                containerColor = theme.surface,
-                contentColor = theme.primary,
-                edgePadding = 12.dp
-            ) {
-                tabTitles.forEachIndexed { index, title ->
-                    Tab(
-                        selected = selectedMainTab == index,
-                        onClick = {
-                            selectedMainTab = index
-                            editingCategoryId = null
-                        },
-                        text = {
-                            Text(
-                                text = title,
-                                fontWeight = if (selectedMainTab == index) FontWeight.Bold else FontWeight.Normal,
-                                fontSize = 14.sp,
-                                color = if (selectedMainTab == index) theme.primary else theme.textSecondary
-                            )
-                        }
-                    )
-                }
-            }
-
-            // TAB 0: CATEGORIES
-            if (selectedMainTab == 0) {
-                if (currentCategory != null) {
+            when {
+                // 1. Category Detail Subpage
+                editingCategoryId != null && currentCategory != null -> {
                     Column(modifier = Modifier.fillMaxSize()) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(theme.surface)
-                                .padding(horizontal = 16.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            TextButton(onClick = { editingCategoryId = null }) {
-                                Text("← Back", color = theme.primary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                            }
-                            Spacer(modifier = Modifier.weight(1f))
-                            Text(
-                                text = "${currentCategory.packageNames.size} apps selected",
-                                color = theme.textSecondary,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(16.dp),
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
                             colors = CardDefaults.cardColors(containerColor = theme.surface),
                             shape = RoundedCornerShape(20.dp),
                             border = BorderStroke(1.dp, theme.cardBorder)
@@ -777,7 +846,7 @@ fun MainScreen(
                                     ) {
                                         Text(
                                             text = "Rename",
-                                            color = theme.primary,
+                                            color = theme.textSecondary,
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.SemiBold,
                                             modifier = Modifier.clickable {
@@ -788,7 +857,7 @@ fun MainScreen(
                                         Text("•", color = theme.textSecondary, fontSize = 12.sp)
                                         Text(
                                             text = "Change Icon",
-                                            color = theme.primary,
+                                            color = theme.textSecondary,
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.SemiBold,
                                             modifier = Modifier.clickable { showIconDialog = true }
@@ -812,49 +881,51 @@ fun MainScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 2.dp),
-                            horizontalArrangement = Arrangement.End
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
+                            Text(
+                                text = "${currentCategory.packageNames.size} apps selected",
+                                color = theme.textSecondary,
+                                fontSize = 13.sp
+                            )
                             Button(
                                 onClick = {
                                     val pickIntent = Intent(Intent.ACTION_CREATE_SHORTCUT)
                                     val chooser = Intent.createChooser(pickIntent, "Add App Shortcut")
                                     shortcutPickerLauncher.launch(chooser)
                                 },
-                                shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = theme.surface),
+                                border = BorderStroke(1.dp, theme.cardBorder),
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                             ) {
-                                Text("✦ + Add App Shortcut", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                Text("+ App Shortcut", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = theme.textPrimary)
                             }
                         }
 
                         OutlinedTextField(
-                            value = searchQuery,
-                            onValueChange = { searchQuery = it },
+                            value = appSearchQuery,
+                            onValueChange = { appSearchQuery = it },
                             placeholder = { Text("Search installed apps...", color = theme.textSecondary, fontSize = 14.sp) },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp, vertical = 4.dp),
-                            shape = RoundedCornerShape(14.dp),
+                            shape = RoundedCornerShape(24.dp),
                             singleLine = true,
                             trailingIcon = {
-                                if (searchQuery.isNotEmpty()) {
-                                    IconButton(onClick = { searchQuery = "" }) {
-                                        Text(
-                                            text = "✕",
-                                            color = theme.textSecondary,
-                                            fontSize = 16.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
+                                if (appSearchQuery.isNotEmpty()) {
+                                    IconButton(onClick = { appSearchQuery = "" }) {
+                                        Text("✕", color = theme.textSecondary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                                     }
                                 }
                             },
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = theme.inputBackground,
-                                unfocusedContainerColor = theme.inputBackground,
-                                focusedBorderColor = theme.primary,
-                                unfocusedBorderColor = theme.cardBorder,
+                                focusedContainerColor = theme.searchBarBg,
+                                unfocusedContainerColor = theme.searchBarBg,
+                                focusedBorderColor = Color.Transparent,
+                                unfocusedBorderColor = Color.Transparent,
                                 focusedTextColor = theme.textPrimary,
                                 unfocusedTextColor = theme.textPrimary
                             )
@@ -862,7 +933,7 @@ fun MainScreen(
 
                         if (isLoading) {
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator(color = theme.primary)
+                                CircularProgressIndicator(color = theme.textPrimary)
                             }
                         } else {
                             LazyColumn(
@@ -888,20 +959,19 @@ fun MainScreen(
                                                 if (it.id == currentCategory.id) it.copy(packageNames = updatedList) else it
                                             }
                                         },
-                                        onChangeIcon = {
-                                            editingAppForIcon = app
-                                        },
+                                        onChangeIcon = { editingAppForIcon = app },
                                         updateCounter = iconUpdateCounter
                                     )
                                 }
                             }
                         }
                     }
-                } else {
+                }
+
+                // 2. Categories List Subpage
+                currentScreen == NovaScreen.CATEGORIES -> {
                     LazyColumn(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(16.dp),
+                        modifier = Modifier.fillMaxSize().padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
                         item {
@@ -914,20 +984,18 @@ fun MainScreen(
                                         showAddCategoryDialog = true
                                     }
                                 },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(52.dp),
+                                modifier = Modifier.fillMaxWidth().height(50.dp),
                                 shape = RoundedCornerShape(16.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = theme.primary)
+                                colors = ButtonDefaults.buttonColors(containerColor = theme.surface),
+                                border = BorderStroke(1.dp, theme.cardBorder)
                             ) {
-                                Text("+ Add Category", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                Text("+ Add Category", color = theme.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                             }
                         }
 
                         item {
-                            SettingsCard(
+                            NovaSettingsCard(
                                 title = "App Icon Size",
-                                titleColor = theme.primary,
                                 subtitle = "Adjust how large app icons appear inside the widget grid.",
                                 theme = theme
                             ) {
@@ -937,16 +1005,16 @@ fun MainScreen(
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text("Icon Dimension", fontSize = 14.sp, color = theme.textPrimary, fontWeight = FontWeight.Medium)
-                                        Text("${categoryIconSizeDp.toInt()} dp", fontSize = 14.sp, color = theme.primary, fontWeight = FontWeight.Bold)
+                                        Text("Dimension", fontSize = 14.sp, color = theme.textPrimary, fontWeight = FontWeight.Medium)
+                                        Text("${categoryIconSizeDp.toInt()} dp", fontSize = 14.sp, color = theme.textSecondary, fontWeight = FontWeight.Bold)
                                     }
                                     Slider(
                                         value = categoryIconSizeDp,
                                         onValueChange = { categoryIconSizeDp = it },
                                         valueRange = 32f..54f,
                                         colors = SliderDefaults.colors(
-                                            thumbColor = theme.primary,
-                                            activeTrackColor = theme.primary,
+                                            thumbColor = theme.textPrimary,
+                                            activeTrackColor = theme.textPrimary,
                                             inactiveTrackColor = theme.cardBorder
                                         )
                                     )
@@ -963,473 +1031,451 @@ fun MainScreen(
                             )
                         }
 
-                        if (categories.isEmpty()) {
-                            item {
-                                Box(
+                        items(categories, key = { it.id }) { cat ->
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { editingCategoryId = cat.id },
+                                colors = CardDefaults.cardColors(containerColor = theme.surface),
+                                shape = RoundedCornerShape(16.dp),
+                                border = BorderStroke(1.dp, theme.cardBorder)
+                            ) {
+                                Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(vertical = 32.dp),
-                                    contentAlignment = Alignment.Center
+                                        .padding(16.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        text = "No categories yet.\nTap \"+ Add Category\" to start!",
-                                        color = theme.textSecondary,
-                                        fontSize = 14.sp,
-                                        textAlign = TextAlign.Center
-                                    )
-                                }
-                            }
-                        } else {
-                            items(categories, key = { it.id }) { cat ->
-                                Card(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { editingCategoryId = cat.id },
-                                    colors = CardDefaults.cardColors(containerColor = theme.surface),
-                                    shape = RoundedCornerShape(16.dp),
-                                    border = BorderStroke(1.dp, theme.cardBorder)
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(16.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        CategoryBadgeView(category = cat, size = 46.dp, theme = theme)
+                                    CategoryBadgeView(category = cat, size = 46.dp, theme = theme)
 
-                                        Spacer(modifier = Modifier.width(14.dp))
+                                    Spacer(modifier = Modifier.width(14.dp))
 
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = cat.name,
-                                                color = theme.textPrimary,
-                                                fontSize = 16.sp,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                            Text(
-                                                text = "${cat.packageNames.size} apps configured",
-                                                color = theme.textSecondary,
-                                                fontSize = 12.sp
-                                            )
-                                        }
-
+                                    Column(modifier = Modifier.weight(1f)) {
                                         Text(
-                                            text = "Edit →",
-                                            color = theme.primary,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.SemiBold
+                                            text = cat.name,
+                                            color = theme.textPrimary,
+                                            fontSize = 16.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = "${cat.packageNames.size} apps configured",
+                                            color = theme.textSecondary,
+                                            fontSize = 12.sp
                                         )
                                     }
+
+                                    Text(
+                                        text = "Edit →",
+                                        color = theme.textSecondary,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            // TAB 1: SIDE BAR
-            if (selectedMainTab == 1) {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    item {
-                        SettingsCard(
-                            title = "Sidebar Placement",
-                            titleColor = Color(0xFF2563EB),
-                            subtitle = "Dock the category sidebar to the left or right side of your screen.",
-                            theme = theme
-                        ) {
-                            Column {
-                                RadioOption(
-                                    label = "Left Side",
-                                    isSelected = sidebarPosition == "left",
-                                    theme = theme,
-                                    onClick = { sidebarPosition = "left" }
-                                )
-                                RadioOption(
-                                    label = "Right Side",
-                                    isSelected = sidebarPosition == "right",
-                                    theme = theme,
-                                    onClick = { sidebarPosition = "right" }
-                                )
-                            }
-                        }
-                    }
-
-                    item {
-                        SettingsCard(
-                            title = "Sidebar Clock",
-                            titleColor = theme.primary,
-                            subtitle = "Enable or customize the stacked digital clock above the sidebar.",
-                            theme = theme
-                        ) {
-                            Column {
-                                RadioOption(
-                                    label = "Show Clock (On)",
-                                    isSelected = clockEnabled,
-                                    theme = theme,
-                                    onClick = { clockEnabled = true }
-                                )
-                                RadioOption(
-                                    label = "Hide Clock (Off)",
-                                    isSelected = !clockEnabled,
-                                    theme = theme,
-                                    onClick = { clockEnabled = false }
-                                )
-
-                                if (clockEnabled) {
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable { showClockFontDialog = true }
-                                            .padding(horizontal = 20.dp, vertical = 10.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column {
-                                            Text("Clock Font", fontSize = 12.sp, color = theme.textSecondary)
-                                            Text(getFontLabel(clockFont), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = theme.textPrimary)
-                                        }
-                                        Text("Change Font →", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = theme.primary)
-                                    }
-
-                                    Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween
-                                        ) {
-                                            Text("Clock Size", fontSize = 13.sp, color = theme.textPrimary, fontWeight = FontWeight.Medium)
-                                            Text("${clockSizeSp.toInt()} sp", fontSize = 13.sp, color = theme.primary, fontWeight = FontWeight.Bold)
-                                        }
-                                        Slider(
-                                            value = clockSizeSp,
-                                            onValueChange = { clockSizeSp = it },
-                                            valueRange = 18f..38f,
-                                            colors = SliderDefaults.colors(
-                                                thumbColor = theme.primary,
-                                                activeTrackColor = theme.primary,
-                                                inactiveTrackColor = theme.cardBorder
-                                            )
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    item {
-                        SettingsCard(
-                            title = "Vertical Alignment",
-                            titleColor = Color(0xFF0284C7),
-                            subtitle = "Position the sidebar tabs at the top, middle, or bottom of the widget.",
-                            theme = theme
-                        ) {
-                            Column {
-                                RadioOption(
-                                    label = "Bottom",
-                                    isSelected = sidebarAlignment == "bottom",
-                                    theme = theme,
-                                    onClick = { sidebarAlignment = "bottom" }
-                                )
-                                RadioOption(
-                                    label = "Middle (Center)",
-                                    isSelected = sidebarAlignment == "center",
-                                    theme = theme,
-                                    onClick = { sidebarAlignment = "center" }
-                                )
-                                RadioOption(
-                                    label = "Top",
-                                    isSelected = sidebarAlignment == "top",
-                                    theme = theme,
-                                    onClick = { sidebarAlignment = "top" }
-                                )
-                            }
-                        }
-                    }
-
-                    item {
-                        SettingsCard(
-                            title = "Tab Display Style",
-                            titleColor = Color(0xFFDB2777),
-                            subtitle = "Choose whether category tabs display icons or full text labels.",
-                            theme = theme
-                        ) {
-                            Column {
-                                RadioOption(
-                                    label = "Icons (Symbols / Emoji / Gallery)",
-                                    isSelected = sidebarDisplayType == "icons",
-                                    theme = theme,
-                                    onClick = { sidebarDisplayType = "icons" }
-                                )
-                                RadioOption(
-                                    label = "Heading (Full Text Labels)",
-                                    isSelected = sidebarDisplayType == "heading",
-                                    theme = theme,
-                                    onClick = { sidebarDisplayType = "heading" }
-                                )
-                            }
-                        }
-                    }
-
-                    item {
-                        SettingsCard(
-                            title = "Sidebar Heading Font",
-                            titleColor = Color(0xFF059669),
-                            subtitle = "Select font typeface for sidebar labels and headings.",
-                            theme = theme
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { showFontDialog = true }
-                                    .padding(horizontal = 20.dp, vertical = 14.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                // 3. Side Bar Subpage
+                currentScreen == NovaScreen.SIDEBAR -> {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize().padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        item {
+                            NovaSettingsCard(
+                                title = "Sidebar Placement",
+                                subtitle = "Dock the category sidebar to the left or right side of your screen.",
+                                theme = theme
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = "Current Font",
-                                        fontSize = 12.sp,
-                                        color = theme.textSecondary
+                                Column {
+                                    NovaRadioOption(
+                                        label = "Left Side",
+                                        isSelected = sidebarPosition == "left",
+                                        theme = theme,
+                                        onClick = { sidebarPosition = "left" }
                                     )
-                                    Text(
-                                        text = getFontLabel(sidebarFont),
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = theme.textPrimary
+                                    NovaRadioOption(
+                                        label = "Right Side",
+                                        isSelected = sidebarPosition == "right",
+                                        theme = theme,
+                                        onClick = { sidebarPosition = "right" }
                                     )
                                 }
-                                Text(
-                                    text = "Change Font →",
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = theme.primary
-                                )
                             }
                         }
-                    }
 
-                    item {
-                        SettingsCard(
-                            title = "Sidebar Item Size",
-                            titleColor = theme.primary,
-                            subtitle = "Control text label size, symbol size, and gallery icon scale on the sidebar dock.",
-                            theme = theme
-                        ) {
-                            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                        item {
+                            NovaSettingsCard(
+                                title = "Sidebar Clock",
+                                subtitle = "Enable or customize the stacked digital clock above the sidebar.",
+                                theme = theme
+                            ) {
+                                Column {
+                                    NovaRadioOption(
+                                        label = "Show Clock (On)",
+                                        isSelected = clockEnabled,
+                                        theme = theme,
+                                        onClick = { clockEnabled = true }
+                                    )
+                                    NovaRadioOption(
+                                        label = "Hide Clock (Off)",
+                                        isSelected = !clockEnabled,
+                                        theme = theme,
+                                        onClick = { clockEnabled = false }
+                                    )
+
+                                    if (clockEnabled) {
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable { showClockFontDialog = true }
+                                                .padding(horizontal = 20.dp, vertical = 10.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column {
+                                                Text("Clock Font", fontSize = 12.sp, color = theme.textSecondary)
+                                                Text(getFontLabel(clockFont), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = theme.textPrimary)
+                                            }
+                                            Text("Change Font →", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = theme.textSecondary)
+                                        }
+
+                                        Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text("Clock Size", fontSize = 13.sp, color = theme.textPrimary, fontWeight = FontWeight.Medium)
+                                                Text("${clockSizeSp.toInt()} sp", fontSize = 13.sp, color = theme.textSecondary, fontWeight = FontWeight.Bold)
+                                            }
+                                            Slider(
+                                                value = clockSizeSp,
+                                                onValueChange = { clockSizeSp = it },
+                                                valueRange = 18f..38f,
+                                                colors = SliderDefaults.colors(
+                                                    thumbColor = theme.textPrimary,
+                                                    activeTrackColor = theme.textPrimary,
+                                                    inactiveTrackColor = theme.cardBorder
+                                                )
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        item {
+                            NovaSettingsCard(
+                                title = "Vertical Alignment",
+                                subtitle = "Position the sidebar tabs at the top, middle, or bottom of the widget.",
+                                theme = theme
+                            ) {
+                                Column {
+                                    NovaRadioOption(
+                                        label = "Bottom",
+                                        isSelected = sidebarAlignment == "bottom",
+                                        theme = theme,
+                                        onClick = { sidebarAlignment = "bottom" }
+                                    )
+                                    NovaRadioOption(
+                                        label = "Middle (Center)",
+                                        isSelected = sidebarAlignment == "center",
+                                        theme = theme,
+                                        onClick = { sidebarAlignment = "center" }
+                                    )
+                                    NovaRadioOption(
+                                        label = "Top",
+                                        isSelected = sidebarAlignment == "top",
+                                        theme = theme,
+                                        onClick = { sidebarAlignment = "top" }
+                                    )
+                                }
+                            }
+                        }
+
+                        item {
+                            NovaSettingsCard(
+                                title = "Tab Display Style",
+                                subtitle = "Choose whether category tabs display icons or full text labels.",
+                                theme = theme
+                            ) {
+                                Column {
+                                    NovaRadioOption(
+                                        label = "Icons (Symbols / Emoji / Gallery)",
+                                        isSelected = sidebarDisplayType == "icons",
+                                        theme = theme,
+                                        onClick = { sidebarDisplayType = "icons" }
+                                    )
+                                    NovaRadioOption(
+                                        label = "Heading (Full Text Labels)",
+                                        isSelected = sidebarDisplayType == "heading",
+                                        theme = theme,
+                                        onClick = { sidebarDisplayType = "heading" }
+                                    )
+                                }
+                            }
+                        }
+
+                        item {
+                            NovaSettingsCard(
+                                title = "Sidebar Heading Font",
+                                subtitle = "Select font typeface for sidebar labels and headings.",
+                                theme = theme
+                            ) {
                                 Row(
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { showFontDialog = true }
+                                        .padding(horizontal = 20.dp, vertical = 14.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Badge / Text / Icon Scale", fontSize = 14.sp, color = theme.textPrimary, fontWeight = FontWeight.Medium)
-                                    Text("${sidebarSizeSp.toInt()} sp", fontSize = 14.sp, color = theme.primary, fontWeight = FontWeight.Bold)
-                                }
-                                Slider(
-                                    value = sidebarSizeSp,
-                                    onValueChange = { sidebarSizeSp = it },
-                                    valueRange = 10f..22f,
-                                    colors = SliderDefaults.colors(
-                                        thumbColor = theme.primary,
-                                        activeTrackColor = theme.primary,
-                                        inactiveTrackColor = theme.cardBorder
-                                    )
-                                )
-                            }
-                        }
-                    }
-
-                    item { Spacer(modifier = Modifier.height(16.dp)) }
-                }
-            }
-
-            // TAB 2: ANIMATION
-            if (selectedMainTab == 2) {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    item {
-                        SettingsCard(
-                            title = "Category Switch Animation",
-                            titleColor = theme.primary,
-                            subtitle = "Select transition effect when switching between sidebar categories.",
-                            theme = theme
-                        ) {
-                            Column {
-                                listOf(
-                                    "fade" to "Fade (Smooth Crossfade)",
-                                    "slide_h" to "Slide Horizontal (Lateral Swipe)",
-                                    "slide_v" to "Slide Vertical (Bottom-Up Rise)",
-                                    "zoom" to "Zoom & Scale (Pop Transition)",
-                                    "none" to "None (Instant / 0ms Snappy)"
-                                ).forEach { (key, label) ->
-                                    RadioOption(
-                                        label = label,
-                                        isSelected = animationStyle == key,
-                                        theme = theme,
-                                        onClick = { animationStyle = key }
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    item {
-                        SettingsCard(
-                            title = "About Transitions",
-                            titleColor = theme.textSecondary,
-                            subtitle = "How animations work in Apps Widget.",
-                            theme = theme
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Text(
-                                    text = "Category transitions utilize an internal dual-buffered ViewFlipper engine to seamlessly blend incoming and outgoing app grids with zero redraw flashes.",
-                                    color = theme.textSecondary,
-                                    fontSize = 13.sp,
-                                    lineHeight = 17.sp
-                                )
-                            }
-                        }
-                    }
-
-                    item { Spacer(modifier = Modifier.height(16.dp)) }
-                }
-            }
-
-            // TAB 3: ICONS
-            if (selectedMainTab == 3) {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    item {
-                        SettingsCard(
-                            title = "App Icon Style & Pack",
-                            titleColor = Color(0xFF2563EB),
-                            subtitle = "Select whether to use default system app icons or an installed third-party icon pack.",
-                            theme = theme
-                        ) {
-                            Column {
-                                RadioOption(
-                                    label = "Default (Original System Colors)",
-                                    isSelected = unifiedIconStyle == "default",
-                                    theme = theme,
-                                    onClick = { unifiedIconStyle = "default" }
-                                )
-
-                                if (installedIconPacks.isNotEmpty()) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 20.dp, vertical = 8.dp)
-                                    ) {
-                                        Text(
-                                            text = "Installed Icon Packs:",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = theme.primary
-                                        )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text("Current Font", fontSize = 12.sp, color = theme.textSecondary)
+                                        Text(getFontLabel(sidebarFont), fontSize = 15.sp, fontWeight = FontWeight.Bold, color = theme.textPrimary)
                                     }
+                                    Text("Change Font →", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = theme.textSecondary)
+                                }
+                            }
+                        }
 
-                                    installedIconPacks.forEach { pack ->
-                                        val packVal = "pack:${pack.packageName}"
-                                        RadioOption(
-                                            label = "${pack.appName} (Icon Pack)",
-                                            isSelected = unifiedIconStyle == packVal,
+                        item {
+                            NovaSettingsCard(
+                                title = "Sidebar Item Size",
+                                subtitle = "Control text label size, symbol size, and gallery icon scale.",
+                                theme = theme
+                            ) {
+                                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("Item Scale", fontSize = 14.sp, color = theme.textPrimary, fontWeight = FontWeight.Medium)
+                                        Text("${sidebarSizeSp.toInt()} sp", fontSize = 14.sp, color = theme.textSecondary, fontWeight = FontWeight.Bold)
+                                    }
+                                    Slider(
+                                        value = sidebarSizeSp,
+                                        onValueChange = { sidebarSizeSp = it },
+                                        valueRange = 10f..22f,
+                                        colors = SliderDefaults.colors(
+                                            thumbColor = theme.textPrimary,
+                                            activeTrackColor = theme.textPrimary,
+                                            inactiveTrackColor = theme.cardBorder
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 4. Animation Subpage
+                currentScreen == NovaScreen.ANIMATION -> {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize().padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        item {
+                            NovaSettingsCard(
+                                title = "Category Switch Animation",
+                                subtitle = "Select transition effect when switching between sidebar categories.",
+                                theme = theme
+                            ) {
+                                Column {
+                                    listOf(
+                                        "fade" to "Fade (Smooth Crossfade)",
+                                        "slide_h" to "Slide Horizontal (Lateral Swipe)",
+                                        "slide_v" to "Slide Vertical (Bottom-Up Rise)",
+                                        "zoom" to "Zoom & Scale (Pop Transition)",
+                                        "none" to "None (Instant / 0ms Snappy)"
+                                    ).forEach { (key, label) ->
+                                        NovaRadioOption(
+                                            label = label,
+                                            isSelected = animationStyle == key,
                                             theme = theme,
-                                            onClick = { unifiedIconStyle = packVal }
-                                        )
-                                    }
-                                } else {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 20.dp, vertical = 10.dp)
-                                    ) {
-                                        Text(
-                                            text = "No icon pack apps detected on your device. You can install Whicons, Flight Lite, or Delta from the Play Store.",
-                                            color = theme.textSecondary,
-                                            fontSize = 12.sp,
-                                            lineHeight = 16.sp
+                                            onClick = { animationStyle = key }
                                         )
                                     }
                                 }
                             }
                         }
                     }
-
-                    item { Spacer(modifier = Modifier.height(16.dp)) }
                 }
-            }
 
-            // TAB 4: BACKUP & RESTORE
-            if (selectedMainTab == 4) {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    item {
-                        SettingsCard(
-                            title = "Backup & Restore",
-                            titleColor = theme.primary,
-                            subtitle = "Save your setup to a JSON file or restore anytime.",
-                            theme = theme
+                // 5. Icons Subpage
+                currentScreen == NovaScreen.ICONS -> {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize().padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        item {
+                            NovaSettingsCard(
+                                title = "App Icon Style & Pack",
+                                subtitle = "Select whether to use default system app icons or an installed third-party icon pack.",
+                                theme = theme
+                            ) {
+                                Column {
+                                    NovaRadioOption(
+                                        label = "Default (Original System Colors)",
+                                        isSelected = unifiedIconStyle == "default",
+                                        theme = theme,
+                                        onClick = { unifiedIconStyle = "default" }
+                                    )
+
+                                    if (installedIconPacks.isNotEmpty()) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 20.dp, vertical = 8.dp)
+                                        ) {
+                                            Text(
+                                                text = "Installed Icon Packs:",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = theme.textSecondary
+                                            )
+                                        }
+
+                                        installedIconPacks.forEach { pack ->
+                                            val packVal = "pack:${pack.packageName}"
+                                            NovaRadioOption(
+                                                label = "${pack.appName} (Icon Pack)",
+                                                isSelected = unifiedIconStyle == packVal,
+                                                theme = theme,
+                                                onClick = { unifiedIconStyle = packVal }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 6. Backup Subpage
+                currentScreen == NovaScreen.BACKUP -> {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize().padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        item {
+                            NovaSettingsCard(
+                                title = "Backup & Restore",
+                                subtitle = "Save your setup to a JSON file or restore anytime.",
+                                theme = theme
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Text(
+                                        text = "Exports all configured categories, custom app icons, gallery images, and layouts into an offline backup file.",
+                                        color = theme.textSecondary,
+                                        fontSize = 13.sp,
+                                        lineHeight = 17.sp
+                                    )
+
+                                    Spacer(modifier = Modifier.height(16.dp))
+
+                                    Button(
+                                        onClick = { exportBackupLauncher.launch("apps_widget_backup_${System.currentTimeMillis()}.json") },
+                                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                                        shape = RoundedCornerShape(14.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = theme.surface),
+                                        border = BorderStroke(1.dp, theme.cardBorder)
+                                    ) {
+                                        Text("💾 Backup Configuration to File", color = theme.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                    }
+
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    OutlinedButton(
+                                        onClick = { importBackupLauncher.launch(arrayOf("application/json", "text/*", "*/*")) },
+                                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                                        shape = RoundedCornerShape(14.dp),
+                                        border = BorderStroke(1.dp, theme.cardBorder)
+                                    ) {
+                                        Text("📂 Restore Configuration from File", color = theme.textSecondary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // MAIN SCREEN: Exact Nova Settings Vertical List
+                else -> {
+                    Column(
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        // Nova Rounded Search Pill
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = 6.dp)
+                                .height(50.dp)
+                                .clip(RoundedCornerShape(25.dp))
+                                .background(theme.searchBarBg)
+                                .padding(horizontal = 16.dp),
+                            contentAlignment = Alignment.CenterStart
                         ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Text(
-                                    text = "Exports all configured categories, custom app icons, gallery images, sidebar settings, and layouts into an offline backup file.",
-                                    color = theme.textSecondary,
-                                    fontSize = 13.sp,
-                                    lineHeight = 17.sp
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                NovaOutlineIcon(type = IconType.SEARCH, tint = theme.iconTint, size = 18.dp)
+                                Spacer(modifier = Modifier.width(12.dp))
+
+                                BasicTextFieldWithPlaceholder(
+                                    value = mainSearchQuery,
+                                    onValueChange = { mainSearchQuery = it },
+                                    placeholder = "Search",
+                                    textColor = theme.textPrimary,
+                                    placeholderColor = theme.textSecondary
                                 )
 
-                                Spacer(modifier = Modifier.height(16.dp))
-
-                                Button(
-                                    onClick = {
-                                        exportBackupLauncher.launch("apps_widget_backup_${System.currentTimeMillis()}.json")
-                                    },
-                                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = theme.primary)
-                                ) {
-                                    Text("💾 Backup Configuration to File", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                }
-
-                                Spacer(modifier = Modifier.height(10.dp))
-
-                                OutlinedButton(
-                                    onClick = {
-                                        importBackupLauncher.launch(arrayOf("application/json", "text/*", "*/*"))
-                                    },
-                                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                                    shape = RoundedCornerShape(12.dp),
-                                    border = BorderStroke(1.5.dp, theme.primary)
-                                ) {
-                                    Text("📂 Restore Configuration from File", color = theme.primary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                if (mainSearchQuery.isNotEmpty()) {
+                                    IconButton(
+                                        onClick = { mainSearchQuery = "" },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Text("✕", color = theme.textSecondary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    item { Spacer(modifier = Modifier.height(16.dp)) }
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Vertical Settings List
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            items(filteredMenuItems) { item ->
+                                val (title, subtitle, screen) = item
+                                NovaSettingsRow(
+                                    title = title,
+                                    subtitle = subtitle,
+                                    type = when (screen) {
+                                        NovaScreen.CATEGORIES -> IconType.CATEGORIES
+                                        NovaScreen.SIDEBAR -> IconType.SIDEBAR
+                                        NovaScreen.ANIMATION -> IconType.ANIMATION
+                                        NovaScreen.ICONS -> IconType.ICONS
+                                        NovaScreen.BACKUP -> IconType.BACKUP
+                                        else -> IconType.SETTINGS
+                                    },
+                                    theme = theme,
+                                    onClick = { currentScreen = screen }
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
     }
 
-    // TOP-RIGHT SETTINGS DIALOG (Theme Selection & Reset)
+    // TOP-RIGHT PREFERENCES DIALOG (Light/Dark Theme + Reset)
     if (showSettingsDialog) {
         AlertDialog(
             onDismissRequest = { showSettingsDialog = false },
@@ -1437,7 +1483,7 @@ fun MainScreen(
                 Text(
                     text = "Preferences",
                     fontWeight = FontWeight.Bold,
-                    fontSize = 19.sp,
+                    fontSize = 20.sp,
                     color = theme.textPrimary
                 )
             },
@@ -1447,21 +1493,21 @@ fun MainScreen(
                         text = "App Theme",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
-                        color = theme.primary
+                        color = theme.textPrimary
                     )
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
-                    RadioOption(
-                        label = "Light Mode",
-                        isSelected = !theme.isDark,
-                        theme = theme,
-                        onClick = { onToggleTheme(false) }
-                    )
-                    RadioOption(
+                    NovaRadioOption(
                         label = "Dark Mode",
                         isSelected = theme.isDark,
                         theme = theme,
                         onClick = { onToggleTheme(true) }
+                    )
+                    NovaRadioOption(
+                        label = "Light Mode",
+                        isSelected = !theme.isDark,
+                        theme = theme,
+                        onClick = { onToggleTheme(false) }
                     )
 
                     Spacer(modifier = Modifier.height(16.dp))
@@ -1469,14 +1515,14 @@ fun MainScreen(
                     Spacer(modifier = Modifier.height(16.dp))
 
                     Text(
-                        text = "Reset",
+                        text = "Reset All Data",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFFEF4444)
                     )
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Clear all categories, assigned apps, and settings.",
+                        text = "Restore categories, shortcuts, and layout settings to initial state.",
                         fontSize = 12.sp,
                         color = theme.textSecondary
                     )
@@ -1494,7 +1540,7 @@ fun MainScreen(
             },
             confirmButton = {
                 TextButton(onClick = { showSettingsDialog = false }) {
-                    Text("Done", color = theme.primary, fontWeight = FontWeight.SemiBold)
+                    Text("Done", color = theme.textPrimary, fontWeight = FontWeight.SemiBold)
                 }
             },
             containerColor = theme.surface
@@ -1505,12 +1551,10 @@ fun MainScreen(
     if (showResetConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showResetConfirmDialog = false },
-            title = {
-                Text("Confirm Reset", fontWeight = FontWeight.Bold, color = Color(0xFFEF4444))
-            },
+            title = { Text("Confirm Reset", fontWeight = FontWeight.Bold, color = Color(0xFFEF4444)) },
             text = {
                 Text(
-                    text = "Are you sure you want to reset all categories, assigned apps, custom gallery icons, and layout settings back to default?",
+                    text = "Are you sure you want to clear all categories, assigned apps, custom gallery icons, and layout settings?",
                     color = theme.textPrimary,
                     fontSize = 14.sp
                 )
@@ -1539,7 +1583,7 @@ fun MainScreen(
 
                         showResetConfirmDialog = false
                         showSettingsDialog = false
-                        Toast.makeText(context, "Reset complete! Restored to defaults.", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Reset complete!", Toast.LENGTH_SHORT).show()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
                 ) {
@@ -1561,12 +1605,7 @@ fun MainScreen(
         AlertDialog(
             onDismissRequest = { editingAppForIcon = null },
             title = {
-                Text(
-                    text = "Icon for ${app.appName}",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    color = theme.textPrimary
-                )
+                Text(text = "Icon for ${app.appName}", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = theme.textPrimary)
             },
             text = {
                 Column(modifier = Modifier.fillMaxWidth()) {
@@ -1574,12 +1613,13 @@ fun MainScreen(
                         onClick = { appGalleryLauncher.launch("image/*") },
                         modifier = Modifier.fillMaxWidth().height(48.dp),
                         shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
+                        colors = ButtonDefaults.buttonColors(containerColor = theme.surface),
+                        border = BorderStroke(1.dp, theme.cardBorder)
                     ) {
-                        Text("📁 Upload Icon from Gallery", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text("📁 Upload Icon from Gallery", color = theme.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     OutlinedButton(
                         onClick = {
@@ -1597,12 +1637,10 @@ fun MainScreen(
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text("Or choose a modern minimal symbol:", color = theme.textSecondary, fontSize = 12.sp)
+                    Text("Or choose a modern symbol:", color = theme.textSecondary, fontSize = 12.sp)
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    LazyColumn(
-                        modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp)
-                    ) {
+                    LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp)) {
                         items(modernCuratedSymbols.chunked(6)) { rowIcons ->
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -1612,7 +1650,7 @@ fun MainScreen(
                                     Box(
                                         modifier = Modifier
                                             .size(38.dp)
-                                            .background(if (theme.isDark) Color(0xFF282834) else Color(0xFFF3E8FF), CircleShape)
+                                            .background(if (theme.isDark) Color(0xFF333647) else Color(0xFFE2E4EB), CircleShape)
                                             .clickable {
                                                 prefs.edit().putString("custom_app_icon_${app.packageName}", "symbol:$symbol").apply()
                                                 AppIconHelper.clearCache(context)
@@ -1622,7 +1660,7 @@ fun MainScreen(
                                             },
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Text(symbol, fontSize = 18.sp, color = theme.primary, fontWeight = FontWeight.Bold)
+                                        Text(symbol, fontSize = 18.sp, color = theme.textPrimary, fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
@@ -1632,7 +1670,7 @@ fun MainScreen(
             },
             confirmButton = {
                 TextButton(onClick = { editingAppForIcon = null }) {
-                    Text("Cancel", color = theme.primary)
+                    Text("Cancel", color = theme.textPrimary)
                 }
             },
             containerColor = theme.surface
@@ -1650,18 +1688,17 @@ fun MainScreen(
                         onClick = { galleryLauncher.launch("image/*") },
                         modifier = Modifier.fillMaxWidth().height(48.dp),
                         shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
+                        colors = ButtonDefaults.buttonColors(containerColor = theme.surface),
+                        border = BorderStroke(1.dp, theme.cardBorder)
                     ) {
-                        Text("📁 Upload Icon from Gallery", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text("📁 Upload Icon from Gallery", color = theme.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     }
 
                     Spacer(modifier = Modifier.height(14.dp))
                     Text("Or choose a modern minimal symbol:", color = theme.textSecondary, fontSize = 12.sp)
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    LazyColumn(
-                        modifier = Modifier.fillMaxWidth().heightIn(max = 280.dp)
-                    ) {
+                    LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 280.dp)) {
                         items(modernCuratedSymbols.chunked(6)) { rowIcons ->
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -1671,7 +1708,7 @@ fun MainScreen(
                                     Box(
                                         modifier = Modifier
                                             .size(38.dp)
-                                            .background(if (theme.isDark) Color(0xFF282834) else Color(0xFFF3E8FF), CircleShape)
+                                            .background(if (theme.isDark) Color(0xFF333647) else Color(0xFFE2E4EB), CircleShape)
                                             .clickable {
                                                 if (currentCategory != null) {
                                                     categories = categories.map {
@@ -1682,7 +1719,7 @@ fun MainScreen(
                                             },
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Text(symbol, fontSize = 18.sp, color = theme.primary, fontWeight = FontWeight.Bold)
+                                        Text(symbol, fontSize = 18.sp, color = theme.textPrimary, fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
@@ -1692,7 +1729,7 @@ fun MainScreen(
             },
             confirmButton = {
                 TextButton(onClick = { showIconDialog = false }) {
-                    Text("Cancel", color = theme.primary)
+                    Text("Cancel", color = theme.textPrimary)
                 }
             },
             containerColor = theme.surface
@@ -1705,9 +1742,7 @@ fun MainScreen(
             onDismissRequest = { showFontDialog = false },
             title = { Text("Select Sidebar Font", fontWeight = FontWeight.Bold, color = theme.textPrimary) },
             text = {
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 380.dp)
-                ) {
+                LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 380.dp)) {
                     items(fontOptions) { (key, label) ->
                         Row(
                             modifier = Modifier
@@ -1722,15 +1757,11 @@ fun MainScreen(
                             Box(
                                 modifier = Modifier
                                     .size(18.dp)
-                                    .border(
-                                        width = 2.dp,
-                                        color = if (sidebarFont == key) theme.primary else theme.textSecondary,
-                                        shape = CircleShape
-                                    ),
+                                    .border(2.dp, if (sidebarFont == key) theme.textPrimary else theme.textSecondary, CircleShape),
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (sidebarFont == key) {
-                                    Box(modifier = Modifier.size(9.dp).background(theme.primary, CircleShape))
+                                    Box(modifier = Modifier.size(9.dp).background(theme.textPrimary, CircleShape))
                                 }
                             }
                             Spacer(modifier = Modifier.width(12.dp))
@@ -1738,7 +1769,7 @@ fun MainScreen(
                                 text = label,
                                 fontSize = 14.sp,
                                 fontWeight = if (sidebarFont == key) FontWeight.Bold else FontWeight.Normal,
-                                color = if (sidebarFont == key) theme.primary else theme.textPrimary
+                                color = if (sidebarFont == key) theme.textPrimary else theme.textSecondary
                             )
                         }
                     }
@@ -1746,7 +1777,7 @@ fun MainScreen(
             },
             confirmButton = {
                 TextButton(onClick = { showFontDialog = false }) {
-                    Text("Close", color = theme.primary)
+                    Text("Close", color = theme.textPrimary)
                 }
             },
             containerColor = theme.surface
@@ -1759,9 +1790,7 @@ fun MainScreen(
             onDismissRequest = { showClockFontDialog = false },
             title = { Text("Select Clock Font", fontWeight = FontWeight.Bold, color = theme.textPrimary) },
             text = {
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 380.dp)
-                ) {
+                LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 380.dp)) {
                     items(fontOptions) { (key, label) ->
                         Row(
                             modifier = Modifier
@@ -1776,15 +1805,11 @@ fun MainScreen(
                             Box(
                                 modifier = Modifier
                                     .size(18.dp)
-                                    .border(
-                                        width = 2.dp,
-                                        color = if (clockFont == key) theme.primary else theme.textSecondary,
-                                        shape = CircleShape
-                                    ),
+                                    .border(2.dp, if (clockFont == key) theme.textPrimary else theme.textSecondary, CircleShape),
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (clockFont == key) {
-                                    Box(modifier = Modifier.size(9.dp).background(theme.primary, CircleShape))
+                                    Box(modifier = Modifier.size(9.dp).background(theme.textPrimary, CircleShape))
                                 }
                             }
                             Spacer(modifier = Modifier.width(12.dp))
@@ -1792,7 +1817,7 @@ fun MainScreen(
                                 text = label,
                                 fontSize = 14.sp,
                                 fontWeight = if (clockFont == key) FontWeight.Bold else FontWeight.Normal,
-                                color = if (clockFont == key) theme.primary else theme.textPrimary
+                                color = if (clockFont == key) theme.textPrimary else theme.textSecondary
                             )
                         }
                     }
@@ -1800,7 +1825,7 @@ fun MainScreen(
             },
             confirmButton = {
                 TextButton(onClick = { showClockFontDialog = false }) {
-                    Text("Close", color = theme.primary)
+                    Text("Close", color = theme.textPrimary)
                 }
             },
             containerColor = theme.surface
@@ -1823,10 +1848,10 @@ fun MainScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = theme.inputBackground,
-                            unfocusedContainerColor = theme.inputBackground,
-                            focusedBorderColor = theme.primary,
-                            unfocusedBorderColor = theme.cardBorder,
+                            focusedContainerColor = theme.searchBarBg,
+                            unfocusedContainerColor = theme.searchBarBg,
+                            focusedBorderColor = Color.Transparent,
+                            unfocusedBorderColor = Color.Transparent,
                             focusedTextColor = theme.textPrimary,
                             unfocusedTextColor = theme.textPrimary
                         )
@@ -1849,9 +1874,10 @@ fun MainScreen(
                             showAddCategoryDialog = false
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = theme.primary)
+                    colors = ButtonDefaults.buttonColors(containerColor = theme.surface),
+                    border = BorderStroke(1.dp, theme.cardBorder)
                 ) {
-                    Text("Create & Open", color = Color.White)
+                    Text("Create & Open", color = theme.textPrimary)
                 }
             },
             dismissButton = {
@@ -1865,7 +1891,6 @@ fun MainScreen(
 
     // Rename Category Dialog
     if (showRenameDialog) {
-        val currentCat = categories.firstOrNull { it.id == editingCategoryId }
         AlertDialog(
             onDismissRequest = { showRenameDialog = false },
             title = { Text("Rename Category", fontWeight = FontWeight.Bold, color = theme.textPrimary) },
@@ -1877,10 +1902,10 @@ fun MainScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = theme.inputBackground,
-                            unfocusedContainerColor = theme.inputBackground,
-                            focusedBorderColor = theme.primary,
-                            unfocusedBorderColor = theme.cardBorder,
+                            focusedContainerColor = theme.searchBarBg,
+                            unfocusedContainerColor = theme.searchBarBg,
+                            focusedBorderColor = Color.Transparent,
+                            unfocusedBorderColor = Color.Transparent,
                             focusedTextColor = theme.textPrimary,
                             unfocusedTextColor = theme.textPrimary
                         )
@@ -1891,16 +1916,17 @@ fun MainScreen(
                 Button(
                     onClick = {
                         val trimmed = renameValue.trim()
-                        if (trimmed.isNotEmpty() && currentCat != null) {
+                        if (trimmed.isNotEmpty() && currentCategory != null) {
                             categories = categories.map {
-                                if (it.id == currentCat.id) it.copy(name = trimmed) else it
+                                if (it.id == currentCategory.id) it.copy(name = trimmed) else it
                             }
                             showRenameDialog = false
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = theme.primary)
+                    colors = ButtonDefaults.buttonColors(containerColor = theme.surface),
+                    border = BorderStroke(1.dp, theme.cardBorder)
                 ) {
-                    Text("Rename", color = Color.White)
+                    Text("Rename", color = theme.textPrimary)
                 }
             },
             dismissButton = {
@@ -1913,12 +1939,54 @@ fun MainScreen(
     }
 }
 
+// NOVA LAUNCHER SETTINGS ROW COMPONENT
 @Composable
-private fun SettingsCard(
+fun NovaSettingsRow(
     title: String,
-    titleColor: Color,
     subtitle: String,
-    theme: ConfigThemePalette,
+    type: IconType,
+    theme: NovaThemePalette,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 22.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier.size(34.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            NovaOutlineIcon(type = type, tint = theme.iconTint, size = 24.dp)
+        }
+
+        Spacer(modifier = Modifier.width(18.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = theme.textPrimary
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = subtitle,
+                fontSize = 13.sp,
+                color = theme.textSecondary,
+                lineHeight = 17.sp
+            )
+        }
+    }
+}
+
+@Composable
+fun NovaSettingsCard(
+    title: String,
+    subtitle: String,
+    theme: NovaThemePalette,
     content: @Composable () -> Unit
 ) {
     Card(
@@ -1938,7 +2006,7 @@ private fun SettingsCard(
                     text = title,
                     fontWeight = FontWeight.Bold,
                     fontSize = 17.sp,
-                    color = titleColor,
+                    color = theme.textPrimary,
                     textAlign = TextAlign.Center
                 )
                 Spacer(modifier = Modifier.height(4.dp))
@@ -1963,10 +2031,10 @@ private fun SettingsCard(
 }
 
 @Composable
-private fun RadioOption(
+fun NovaRadioOption(
     label: String,
     isSelected: Boolean,
-    theme: ConfigThemePalette,
+    theme: NovaThemePalette,
     onClick: () -> Unit
 ) {
     Row(
@@ -1981,7 +2049,7 @@ private fun RadioOption(
                 .size(20.dp)
                 .border(
                     width = 2.dp,
-                    color = if (isSelected) theme.primary else theme.textSecondary,
+                    color = if (isSelected) theme.textPrimary else theme.textSecondary,
                     shape = CircleShape
                 ),
             contentAlignment = Alignment.Center
@@ -1990,7 +2058,7 @@ private fun RadioOption(
                 Box(
                     modifier = Modifier
                         .size(10.dp)
-                        .background(theme.primary, CircleShape)
+                        .background(theme.textPrimary, CircleShape)
                 )
             }
         }
@@ -2005,10 +2073,109 @@ private fun RadioOption(
 }
 
 @Composable
-private fun AppItemRow(
+fun BasicTextFieldWithPlaceholder(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    textColor: Color,
+    placeholderColor: Color
+) {
+    Box(modifier = Modifier.fillMaxWidth()) {
+        if (value.isEmpty()) {
+            Text(text = placeholder, color = placeholderColor, fontSize = 15.sp)
+        }
+        androidx.compose.foundation.text.BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            textStyle = androidx.compose.ui.text.TextStyle(color = textColor, fontSize = 15.sp),
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+enum class IconType {
+    CATEGORIES,
+    SIDEBAR,
+    ANIMATION,
+    ICONS,
+    BACKUP,
+    SEARCH,
+    SETTINGS,
+    CHECK
+}
+
+// Crisp, standalone Vector Outline Icons matching Nova Launcher
+@Composable
+fun NovaOutlineIcon(type: IconType, tint: Color, size: Dp) {
+    Canvas(modifier = Modifier.size(size)) {
+        val w = this.size.width
+        val h = this.size.height
+        val stroke = Stroke(width = 2.dp.toPx())
+
+        when (type) {
+            IconType.CATEGORIES -> {
+                // 4 squares outline
+                val s = w * 0.38f
+                drawRoundRect(tint, Offset(w * 0.08f, h * 0.08f), Size(s, s), CornerRadius(4f), stroke)
+                drawRoundRect(tint, Offset(w * 0.54f, h * 0.08f), Size(s, s), CornerRadius(4f), stroke)
+                drawRoundRect(tint, Offset(w * 0.08f, h * 0.54f), Size(s, s), CornerRadius(4f), stroke)
+                drawRoundRect(tint, Offset(w * 0.54f, h * 0.54f), Size(s, s), CornerRadius(4f), stroke)
+            }
+            IconType.SIDEBAR -> {
+                // Layout with left dock
+                drawRoundRect(tint, Offset(w * 0.1f, h * 0.1f), Size(w * 0.8f, h * 0.8f), CornerRadius(8f), stroke)
+                drawLine(tint, Offset(w * 0.38f, h * 0.1f), Offset(w * 0.38f, h * 0.9f), strokeWidth = 2.dp.toPx())
+            }
+            IconType.ANIMATION -> {
+                // Play / Motion diamond
+                val path = Path().apply {
+                    moveTo(w * 0.2f, h * 0.15f)
+                    lineTo(w * 0.85f, h * 0.5f)
+                    lineTo(w * 0.2f, h * 0.85f)
+                    close()
+                }
+                drawPath(path, tint, style = stroke)
+            }
+            IconType.ICONS -> {
+                // Palette shape
+                drawCircle(tint, radius = w * 0.38f, center = Offset(w * 0.5f, h * 0.5f), style = stroke)
+                drawCircle(tint, radius = w * 0.08f, center = Offset(w * 0.35f, h * 0.38f))
+                drawCircle(tint, radius = w * 0.08f, center = Offset(w * 0.65f, h * 0.38f))
+            }
+            IconType.BACKUP -> {
+                // Cloud / Archive storage
+                drawRoundRect(tint, Offset(w * 0.15f, h * 0.25f), Size(w * 0.7f, h * 0.55f), CornerRadius(6f), stroke)
+                drawLine(tint, Offset(w * 0.35f, h * 0.52f), Offset(w * 0.65f, h * 0.52f), strokeWidth = 2.dp.toPx())
+            }
+            IconType.SEARCH -> {
+                // Magnifying glass
+                drawCircle(tint, radius = w * 0.32f, center = Offset(w * 0.42f, h * 0.42f), style = stroke)
+                drawLine(tint, Offset(w * 0.66f, h * 0.66f), Offset(w * 0.92f, h * 0.92f), strokeWidth = 2.dp.toPx())
+            }
+            IconType.SETTINGS -> {
+                // Gear outline
+                drawCircle(tint, radius = w * 0.22f, center = Offset(w * 0.5f, h * 0.5f), style = stroke)
+                drawCircle(tint, radius = w * 0.40f, center = Offset(w * 0.5f, h * 0.5f), style = stroke)
+            }
+            IconType.CHECK -> {
+                // Checkmark
+                val path = Path().apply {
+                    moveTo(w * 0.2f, h * 0.52f)
+                    lineTo(w * 0.42f, h * 0.75f)
+                    lineTo(w * 0.82f, h * 0.28f)
+                }
+                drawPath(path, tint, style = stroke)
+            }
+        }
+    }
+}
+
+@Composable
+fun AppItemRow(
     app: AppModel,
     isChecked: Boolean,
-    theme: ConfigThemePalette,
+    theme: NovaThemePalette,
     onToggle: () -> Unit,
     onChangeIcon: () -> Unit,
     updateCounter: Int
@@ -2046,10 +2213,10 @@ private fun AppItemRow(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(if (theme.isDark) Color(0xFF282834) else Color(0xFFEDE9FE)),
+                        .background(theme.searchBarBg),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("⚙", color = theme.primary)
+                    Text("⚙", color = theme.textSecondary)
                 }
             }
         }
@@ -2076,14 +2243,14 @@ private fun AppItemRow(
             onClick = onChangeIcon,
             contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
         ) {
-            Text("Icon ✎", fontSize = 11.sp, color = theme.primary, fontWeight = FontWeight.Bold)
+            Text("Icon ✎", fontSize = 11.sp, color = theme.textSecondary, fontWeight = FontWeight.Bold)
         }
 
         Checkbox(
             checked = isChecked,
             onCheckedChange = null,
             colors = CheckboxDefaults.colors(
-                checkedColor = theme.primary,
+                checkedColor = theme.textPrimary,
                 uncheckedColor = theme.textSecondary
             )
         )
