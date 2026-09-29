@@ -46,6 +46,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.categorydockwidget.R
 import com.example.categorydockwidget.data.AppIconHelper
 import com.example.categorydockwidget.data.AppModel
 import com.example.categorydockwidget.data.AppRepository
@@ -601,12 +602,12 @@ fun MainScreen(
                             .putInt("grid_row_spacing", gridRowSpacing.toInt())
                             .putInt("grid_col_spacing", gridColSpacing.toInt())
                             .putString("apps_alignment", appsAlignment)
-                            .putString("sidebar_font_family", backupBundle.sidebarFontFamily)
-                            .putString("unified_icon_style", backupBundle.unifiedIconStyle)
-                            .putBoolean("clock_enabled", backupBundle.clockEnabled)
-                            .putString("clock_font", backupBundle.clockFont)
-                            .putInt("clock_size_sp", backupBundle.clockSizeSp)
-                            .putString("animation_style", backupBundle.animationStyle)
+                            .putString("sidebar_font_family", sidebarFont)
+                            .putString("unified_icon_style", unifiedIconStyle)
+                            .putBoolean("clock_enabled", clockEnabled)
+                            .putString("clock_font", clockFont)
+                            .putInt("clock_size_sp", clockSizeSp)
+                            .putString("animation_style", animationStyle)
                             .putBoolean("haptics_enabled", hapticsEnabled)
                             .apply()
 
