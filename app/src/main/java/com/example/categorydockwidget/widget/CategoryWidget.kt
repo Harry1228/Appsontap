@@ -10,7 +10,6 @@ import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
-import android.view.View
 import android.widget.RemoteViews
 import com.example.categorydockwidget.R
 import com.example.categorydockwidget.data.Category
@@ -67,7 +66,10 @@ class CategoryWidgetProvider : AppWidgetProvider() {
         val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
         val views = RemoteViews(context.packageName, R.layout.widget_layout)
 
-        // Load categories from preferences
+        // Clear existing views in the sidebar container
+        views.removeAllViews(R.id.sidebarContainer)
+
+        // Load categories
         val rawJson = prefs.getString("categories_json", null)
         val categories = if (rawJson != null) {
             try {
@@ -76,7 +78,14 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             } catch (_: Exception) { emptyList() }
         } else emptyList()
 
-        // Setup click intent to open configuration activity when tapping the widget background
+        // Populate sidebar tabs dynamically
+        for (category in categories) {
+            val itemView = RemoteViews(context.packageName, R.layout.widget_sidebar_item)
+            itemView.setTextViewText(R.id.sidebarItemText, category.displayBadge)
+            views.addView(R.id.sidebarContainer, itemView)
+        }
+
+        // Setup click intent to open configuration activity
         val configIntent = Intent(context, WidgetConfigActivity::class.java).apply {
             putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
