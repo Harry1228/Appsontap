@@ -14,6 +14,9 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.TypefaceSpan
@@ -49,6 +52,25 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             R.id.cat_icon_0, R.id.cat_icon_1, R.id.cat_icon_2,
             R.id.cat_icon_3, R.id.cat_icon_4, R.id.cat_icon_5
         )
+
+        fun performHaptic(context: Context) {
+            val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
+            if (!prefs.getBoolean("haptics_enabled", true)) return
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    val manager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
+                    manager?.defaultVibrator?.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK))
+                } else {
+                    @Suppress("DEPRECATION")
+                    val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        vibrator?.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK))
+                    } else {
+                        vibrator?.vibrate(20L)
+                    }
+                }
+            } catch (_: Exception) {}
+        }
 
         private fun resolveTypeface(fontKey: String): Typeface {
             return try {
@@ -149,7 +171,7 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             prefs.edit()
                 .putString("selected_category_$appWidgetId", newCatId)
                 .putInt("active_flipper_slot_$appWidgetId", nextSlot)
-                .putBoolean("hide_apps_$appWidgetId", false) // Force show apps on category click
+                .putBoolean("hide_apps_$appWidgetId", false)
                 .apply()
 
             val nextGridId = if (nextSlot == 0) R.id.app_grid_view_0 else R.id.app_grid_view_1
@@ -166,8 +188,6 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             val layoutRes = getLayoutRes(context, sidebarPosition, animStyle)
 
             val partialViews = RemoteViews(context.packageName, layoutRes)
-
-            // Keep Flipper visible
             partialViews.setViewVisibility(R.id.app_view_flipper, View.VISIBLE)
 
             for (j in CAT_CONTAINER_IDS.indices) {
@@ -215,7 +235,6 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                 val views = RemoteViews(context.packageName, layoutRes)
                 val activeCategory = categories.firstOrNull { it.id == selectedId } ?: categories.firstOrNull()
 
-                // Hide apps logic
                 views.setViewVisibility(R.id.app_view_flipper, if (hideApps) View.INVISIBLE else View.VISIBLE)
 
                 // 1. Clock Configuration & Toggle Intent
@@ -365,24 +384,26 @@ class CategoryWidgetProvider : AppWidgetProvider() {
 
         when (intent.action) {
             ACTION_TOGGLE_APPS -> {
+                performHaptic(context)
                 val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
                 val isHidden = prefs.getBoolean("hide_apps_$appWidgetId", false)
                 prefs.edit().putBoolean("hide_apps_$appWidgetId", !isHidden).apply()
-                
-                // Fast partial update to hide/show Flipper
+
                 val sidebarPosition = prefs.getString("sidebar_position", "left") ?: "left"
                 val animStyle = prefs.getString("animation_style", "fade") ?: "fade"
                 val layoutRes = getLayoutRes(context, sidebarPosition, animStyle)
                 val partialViews = RemoteViews(context.packageName, layoutRes)
-                
+
                 partialViews.setViewVisibility(R.id.app_view_flipper, if (!isHidden) View.INVISIBLE else View.VISIBLE)
                 appWidgetManager.partiallyUpdateAppWidget(appWidgetId, partialViews)
             }
             ACTION_SWITCH_CATEGORY -> {
+                performHaptic(context)
                 val catId = intent.getStringExtra(EXTRA_CATEGORY_ID) ?: return
                 switchCategorySeamless(context, appWidgetManager, appWidgetId, catId)
             }
             ACTION_LAUNCH_APP -> {
+                performHaptic(context)
                 val pkg = intent.getStringExtra(EXTRA_PACKAGE_NAME) ?: return
                 val launchIntent = AppIconHelper.getLaunchIntent(context, pkg)
                 if (launchIntent != null) {

@@ -41,13 +41,11 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.categorydockwidget.R
 import com.example.categorydockwidget.data.AppIconHelper
 import com.example.categorydockwidget.data.AppModel
 import com.example.categorydockwidget.data.AppRepository
@@ -284,6 +282,8 @@ fun MainScreen(
     var showFontDialog by remember { mutableStateOf(false) }
     var showClockFontDialog by remember { mutableStateOf(false) }
 
+    var hapticsEnabled by remember { mutableStateOf(prefs.getBoolean("haptics_enabled", true)) }
+
     var editingAppForIcon by remember { mutableStateOf<AppModel?>(null) }
     var iconUpdateCounter by remember { mutableIntStateOf(0) }
 
@@ -336,6 +336,7 @@ fun MainScreen(
     }
 
     BackHandler(enabled = currentScreen != NovaScreen.HOME || editingCategoryId != null) {
+        CategoryWidgetProvider.performHaptic(context)
         if (editingCategoryId != null) {
             editingCategoryId = null
         } else {
@@ -348,7 +349,7 @@ fun MainScreen(
         currentCategory?.packageNames?.toSet() ?: emptySet()
     }
 
-    val filteredApps = remember(appSearchQuery, installedApps, selectedSet) {
+    val filteredApps = remember(appSearchQuery, installedApps, selectedSet, currentCategory?.packageNames) {
         val query = appSearchQuery.trim().lowercase()
         val list = if (query.isBlank()) {
             installedApps
@@ -366,9 +367,13 @@ fun MainScreen(
                 ))
             }
         }
+
+        // Ordered by position inside packageNames first, then alphabetical for unselected
+        val currentOrder = currentCategory?.packageNames ?: emptyList()
         list.sortedWith(
-            compareByDescending<AppModel> { app ->
-                selectedSet.contains(app.id) || selectedSet.contains(app.packageName)
+            compareBy<AppModel> { app ->
+                val idx = currentOrder.indexOf(app.id).takeIf { it != -1 } ?: currentOrder.indexOf(app.packageName)
+                if (idx != -1) idx else Int.MAX_VALUE
             }.thenBy { it.appName.lowercase() }
         )
     }
@@ -407,6 +412,7 @@ fun MainScreen(
                     AppIconHelper.clearCache(context)
                     editingAppForIcon = null
                     iconUpdateCounter++
+                    CategoryWidgetProvider.performHaptic(context)
                     Toast.makeText(context, "App icon updated!", Toast.LENGTH_SHORT).show()
                 }
             } catch (_: Exception) {
@@ -456,6 +462,7 @@ fun MainScreen(
                 categories = categories.map {
                     if (it.id == editingCategoryId) it.copy(packageNames = it.packageNames + shortcutKey) else it
                 }
+                CategoryWidgetProvider.performHaptic(context)
                 Toast.makeText(context, "Shortcut \"$shortcutName\" added!", Toast.LENGTH_SHORT).show()
             }
         }
@@ -504,6 +511,7 @@ fun MainScreen(
                 context.contentResolver.openOutputStream(uri)?.use { out ->
                     out.write(jsonContent.toByteArray(Charsets.UTF_8))
                 }
+                CategoryWidgetProvider.performHaptic(context)
                 Toast.makeText(context, "Backup exported successfully!", Toast.LENGTH_SHORT).show()
             } catch (_: Exception) {}
         }
@@ -576,6 +584,7 @@ fun MainScreen(
                         CategoryWidgetProvider.updateAllWidgets(context)
 
                         showSettingsDialog = false
+                        CategoryWidgetProvider.performHaptic(context)
                         Toast.makeText(context, "Backup restored successfully!", Toast.LENGTH_SHORT).show()
                     }
                 }
@@ -607,6 +616,7 @@ fun MainScreen(
                         if (it.id == editingCategoryId) it.copy(icon = "gallery:$fileName") else it
                     }
                     showIconDialog = false
+                    CategoryWidgetProvider.performHaptic(context)
                     Toast.makeText(context, "Gallery Icon Applied!", Toast.LENGTH_SHORT).show()
                 }
             } catch (_: Exception) {}
@@ -662,7 +672,10 @@ fun MainScreen(
                         fontSize = 28.sp,
                         color = theme.textPrimary
                     )
-                    IconButton(onClick = { showSettingsDialog = true }) {
+                    IconButton(onClick = {
+                        CategoryWidgetProvider.performHaptic(context)
+                        showSettingsDialog = true
+                    }) {
                         NovaOutlineIcon(type = IconType.SETTINGS, tint = theme.iconTint, size = 26.dp)
                     }
                 }
@@ -687,6 +700,7 @@ fun MainScreen(
                     },
                     navigationIcon = {
                         IconButton(onClick = {
+                            CategoryWidgetProvider.performHaptic(context)
                             if (editingCategoryId != null) {
                                 editingCategoryId = null
                             } else {
@@ -697,7 +711,10 @@ fun MainScreen(
                         }
                     },
                     actions = {
-                        IconButton(onClick = { showSettingsDialog = true }) {
+                        IconButton(onClick = {
+                            CategoryWidgetProvider.performHaptic(context)
+                            showSettingsDialog = true
+                        }) {
                             NovaOutlineIcon(type = IconType.SETTINGS, tint = theme.iconTint, size = 24.dp)
                         }
                     },
@@ -708,12 +725,15 @@ fun MainScreen(
         bottomBar = {
             Surface(
                 color = theme.bottomBarBg,
-                modifier = Modifier.fillMaxWidth().height(68.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding() // Solves navbar overlap
             ) {
-                Row(
-                    modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 12.dp),
+                    contentAlignment = Alignment.Center
                 ) {
                     Row(
                         modifier = Modifier
@@ -721,6 +741,7 @@ fun MainScreen(
                             .clip(RoundedCornerShape(22.dp))
                             .background(theme.pillActive)
                             .clickable {
+                                CategoryWidgetProvider.performHaptic(context)
                                 onSave(
                                     categories,
                                     sidebarPosition,
@@ -737,7 +758,7 @@ fun MainScreen(
                                     animationStyle
                                 )
                             }
-                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                            .padding(vertical = 14.dp),
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -781,7 +802,10 @@ fun MainScreen(
                                     category = currentCategory,
                                     size = 54.dp,
                                     theme = theme,
-                                    modifier = Modifier.clickable { showIconDialog = true }
+                                    modifier = Modifier.clickable {
+                                        CategoryWidgetProvider.performHaptic(context)
+                                        showIconDialog = true
+                                    }
                                 )
 
                                 Spacer(modifier = Modifier.width(16.dp))
@@ -803,6 +827,7 @@ fun MainScreen(
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.SemiBold,
                                             modifier = Modifier.clickable {
+                                                CategoryWidgetProvider.performHaptic(context)
                                                 renameValue = currentCategory.name
                                                 showRenameDialog = true
                                             }
@@ -813,7 +838,10 @@ fun MainScreen(
                                             color = theme.textSecondary,
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.SemiBold,
-                                            modifier = Modifier.clickable { showIconDialog = true }
+                                            modifier = Modifier.clickable {
+                                                CategoryWidgetProvider.performHaptic(context)
+                                                showIconDialog = true
+                                            }
                                         )
                                         Text("•", color = theme.textSecondary, fontSize = 12.sp)
                                         Text(
@@ -822,6 +850,7 @@ fun MainScreen(
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.SemiBold,
                                             modifier = Modifier.clickable {
+                                                CategoryWidgetProvider.performHaptic(context)
                                                 categories = categories.filter { it.id != currentCategory.id }
                                                 editingCategoryId = null
                                             }
@@ -845,6 +874,7 @@ fun MainScreen(
                             )
                             Button(
                                 onClick = {
+                                    CategoryWidgetProvider.performHaptic(context)
                                     val pickIntent = Intent(Intent.ACTION_CREATE_SHORTCUT)
                                     val chooser = Intent.createChooser(pickIntent, "Add App Shortcut")
                                     shortcutPickerLauncher.launch(chooser)
@@ -869,7 +899,10 @@ fun MainScreen(
                             singleLine = true,
                             trailingIcon = {
                                 if (appSearchQuery.isNotEmpty()) {
-                                    IconButton(onClick = { appSearchQuery = "" }) {
+                                    IconButton(onClick = {
+                                        CategoryWidgetProvider.performHaptic(context)
+                                        appSearchQuery = ""
+                                    }) {
                                         Text("✕", color = theme.textSecondary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                                     }
                                 }
@@ -897,22 +930,55 @@ fun MainScreen(
                                     items = filteredApps,
                                     key = { it.id }
                                 ) { app ->
-                                    val isChecked = selectedSet.contains(app.id) || selectedSet.contains(app.packageName)
+                                    val curList = currentCategory.packageNames
+                                    val orderIdx = curList.indexOf(app.id).takeIf { it != -1 } ?: curList.indexOf(app.packageName)
+                                    val isChecked = orderIdx != -1
+
                                     AppItemRow(
                                         app = app,
                                         isChecked = isChecked,
+                                        orderIndex = orderIdx,
+                                        totalSelected = curList.size,
                                         theme = theme,
                                         onToggle = {
+                                            CategoryWidgetProvider.performHaptic(context)
                                             val updatedList = if (isChecked) {
-                                                currentCategory.packageNames - app.id - app.packageName
+                                                curList - app.id - app.packageName
                                             } else {
-                                                currentCategory.packageNames + app.id
+                                                curList + app.id
                                             }
                                             categories = categories.map {
                                                 if (it.id == currentCategory.id) it.copy(packageNames = updatedList) else it
                                             }
                                         },
-                                        onChangeIcon = { editingAppForIcon = app },
+                                        onMoveUp = {
+                                            if (orderIdx > 0) {
+                                                CategoryWidgetProvider.performHaptic(context)
+                                                val m = curList.toMutableList()
+                                                val tmp = m[orderIdx]
+                                                m[orderIdx] = m[orderIdx - 1]
+                                                m[orderIdx - 1] = tmp
+                                                categories = categories.map {
+                                                    if (it.id == currentCategory.id) it.copy(packageNames = m) else it
+                                                }
+                                            }
+                                        },
+                                        onMoveDown = {
+                                            if (orderIdx != -1 && orderIdx < curList.size - 1) {
+                                                CategoryWidgetProvider.performHaptic(context)
+                                                val m = curList.toMutableList()
+                                                val tmp = m[orderIdx]
+                                                m[orderIdx] = m[orderIdx + 1]
+                                                m[orderIdx + 1] = tmp
+                                                categories = categories.map {
+                                                    if (it.id == currentCategory.id) it.copy(packageNames = m) else it
+                                                }
+                                            }
+                                        },
+                                        onChangeIcon = {
+                                            CategoryWidgetProvider.performHaptic(context)
+                                            editingAppForIcon = app
+                                        },
                                         updateCounter = iconUpdateCounter
                                     )
                                 }
@@ -921,6 +987,7 @@ fun MainScreen(
                     }
                 }
 
+                // CATEGORIES SUBPAGE (WITH SWAP UP/DOWN BUTTONS)
                 currentScreen == NovaScreen.CATEGORIES -> {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize().padding(16.dp),
@@ -929,6 +996,7 @@ fun MainScreen(
                         item {
                             Button(
                                 onClick = {
+                                    CategoryWidgetProvider.performHaptic(context)
                                     if (categories.size >= 6) {
                                         Toast.makeText(context, "Maximum 6 categories for widget dock", Toast.LENGTH_SHORT).show()
                                     } else {
@@ -983,11 +1051,15 @@ fun MainScreen(
                             )
                         }
 
-                        items(categories, key = { it.id }) { cat ->
+                        items(categories.size) { index ->
+                            val cat = categories[index]
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clickable { editingCategoryId = cat.id },
+                                    .clickable {
+                                        CategoryWidgetProvider.performHaptic(context)
+                                        editingCategoryId = cat.id
+                                    },
                                 colors = CardDefaults.cardColors(containerColor = theme.surface),
                                 shape = RoundedCornerShape(16.dp),
                                 border = BorderStroke(1.dp, theme.cardBorder)
@@ -995,7 +1067,7 @@ fun MainScreen(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(16.dp),
+                                        .padding(14.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     CategoryBadgeView(category = cat, size = 46.dp, theme = theme)
@@ -1016,12 +1088,50 @@ fun MainScreen(
                                         )
                                     }
 
-                                    Text(
-                                        text = "Edit →",
-                                        color = theme.textSecondary,
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
+                                    // Category Swap Reordering Buttons
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        if (index > 0) {
+                                            IconButton(
+                                                onClick = {
+                                                    CategoryWidgetProvider.performHaptic(context)
+                                                    val m = categories.toMutableList()
+                                                    val tmp = m[index]
+                                                    m[index] = m[index - 1]
+                                                    m[index - 1] = tmp
+                                                    categories = m
+                                                },
+                                                modifier = Modifier.size(32.dp)
+                                            ) {
+                                                Text("▲", fontSize = 13.sp, color = theme.textPrimary, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                        if (index < categories.size - 1) {
+                                            IconButton(
+                                                onClick = {
+                                                    CategoryWidgetProvider.performHaptic(context)
+                                                    val m = categories.toMutableList()
+                                                    val tmp = m[index]
+                                                    m[index] = m[index + 1]
+                                                    m[index + 1] = tmp
+                                                    categories = m
+                                                },
+                                                modifier = Modifier.size(32.dp)
+                                            ) {
+                                                Text("▼", fontSize = 13.sp, color = theme.textPrimary, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+
+                                        Text(
+                                            text = "Edit →",
+                                            color = theme.textSecondary,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            modifier = Modifier.padding(start = 4.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -1044,13 +1154,19 @@ fun MainScreen(
                                         label = "Left Side",
                                         isSelected = sidebarPosition == "left",
                                         theme = theme,
-                                        onClick = { sidebarPosition = "left" }
+                                        onClick = {
+                                            CategoryWidgetProvider.performHaptic(context)
+                                            sidebarPosition = "left"
+                                        }
                                     )
                                     NovaRadioOption(
                                         label = "Right Side",
                                         isSelected = sidebarPosition == "right",
                                         theme = theme,
-                                        onClick = { sidebarPosition = "right" }
+                                        onClick = {
+                                            CategoryWidgetProvider.performHaptic(context)
+                                            sidebarPosition = "right"
+                                        }
                                     )
                                 }
                             }
@@ -1067,13 +1183,19 @@ fun MainScreen(
                                         label = "Show Clock (On)",
                                         isSelected = clockEnabled,
                                         theme = theme,
-                                        onClick = { clockEnabled = true }
+                                        onClick = {
+                                            CategoryWidgetProvider.performHaptic(context)
+                                            clockEnabled = true
+                                        }
                                     )
                                     NovaRadioOption(
                                         label = "Hide Clock (Off)",
                                         isSelected = !clockEnabled,
                                         theme = theme,
-                                        onClick = { clockEnabled = false }
+                                        onClick = {
+                                            CategoryWidgetProvider.performHaptic(context)
+                                            clockEnabled = false
+                                        }
                                     )
 
                                     if (clockEnabled) {
@@ -1081,7 +1203,10 @@ fun MainScreen(
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .clickable { showClockFontDialog = true }
+                                                .clickable {
+                                                    CategoryWidgetProvider.performHaptic(context)
+                                                    showClockFontDialog = true
+                                                }
                                                 .padding(horizontal = 20.dp, vertical = 10.dp),
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
@@ -1128,19 +1253,28 @@ fun MainScreen(
                                         label = "Bottom",
                                         isSelected = sidebarAlignment == "bottom",
                                         theme = theme,
-                                        onClick = { sidebarAlignment = "bottom" }
+                                        onClick = {
+                                            CategoryWidgetProvider.performHaptic(context)
+                                            sidebarAlignment = "bottom"
+                                        }
                                     )
                                     NovaRadioOption(
                                         label = "Middle (Center)",
                                         isSelected = sidebarAlignment == "center",
                                         theme = theme,
-                                        onClick = { sidebarAlignment = "center" }
+                                        onClick = {
+                                            CategoryWidgetProvider.performHaptic(context)
+                                            sidebarAlignment = "center"
+                                        }
                                     )
                                     NovaRadioOption(
                                         label = "Top",
                                         isSelected = sidebarAlignment == "top",
                                         theme = theme,
-                                        onClick = { sidebarAlignment = "top" }
+                                        onClick = {
+                                            CategoryWidgetProvider.performHaptic(context)
+                                            sidebarAlignment = "top"
+                                        }
                                     )
                                 }
                             }
@@ -1157,13 +1291,19 @@ fun MainScreen(
                                         label = "Icons (Symbols / Emoji / Gallery)",
                                         isSelected = sidebarDisplayType == "icons",
                                         theme = theme,
-                                        onClick = { sidebarDisplayType = "icons" }
+                                        onClick = {
+                                            CategoryWidgetProvider.performHaptic(context)
+                                            sidebarDisplayType = "icons"
+                                        }
                                     )
                                     NovaRadioOption(
                                         label = "Heading (Full Text Labels)",
                                         isSelected = sidebarDisplayType == "heading",
                                         theme = theme,
-                                        onClick = { sidebarDisplayType = "heading" }
+                                        onClick = {
+                                            CategoryWidgetProvider.performHaptic(context)
+                                            sidebarDisplayType = "heading"
+                                        }
                                     )
                                 }
                             }
@@ -1178,7 +1318,10 @@ fun MainScreen(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clickable { showFontDialog = true }
+                                        .clickable {
+                                            CategoryWidgetProvider.performHaptic(context)
+                                            showFontDialog = true
+                                        }
                                         .padding(horizontal = 20.dp, vertical = 14.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
@@ -1225,7 +1368,7 @@ fun MainScreen(
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text("Icon / Gallery Scale", fontSize = 14.sp, color = theme.textPrimary, fontWeight = FontWeight.Medium)
+                                        Text("Icon / Gallery Scale (10-50)", fontSize = 14.sp, color = theme.textPrimary, fontWeight = FontWeight.Medium)
                                         Text("${sidebarIconSizeSp.toInt()} sp", fontSize = 14.sp, color = theme.textSecondary, fontWeight = FontWeight.Bold)
                                     }
                                     Slider(
@@ -1267,7 +1410,10 @@ fun MainScreen(
                                             label = label,
                                             isSelected = animationStyle == key,
                                             theme = theme,
-                                            onClick = { animationStyle = key }
+                                            onClick = {
+                                                CategoryWidgetProvider.performHaptic(context)
+                                                animationStyle = key
+                                            }
                                         )
                                     }
                                 }
@@ -1292,7 +1438,10 @@ fun MainScreen(
                                         label = "Default (Original System Colors)",
                                         isSelected = unifiedIconStyle == "default",
                                         theme = theme,
-                                        onClick = { unifiedIconStyle = "default" }
+                                        onClick = {
+                                            CategoryWidgetProvider.performHaptic(context)
+                                            unifiedIconStyle = "default"
+                                        }
                                     )
 
                                     if (installedIconPacks.isNotEmpty()) {
@@ -1315,7 +1464,10 @@ fun MainScreen(
                                                 label = "${pack.appName} (Icon Pack)",
                                                 isSelected = unifiedIconStyle == packVal,
                                                 theme = theme,
-                                                onClick = { unifiedIconStyle = packVal }
+                                                onClick = {
+                                                    CategoryWidgetProvider.performHaptic(context)
+                                                    unifiedIconStyle = packVal
+                                                }
                                             )
                                         }
                                     }
@@ -1347,7 +1499,10 @@ fun MainScreen(
                                     Spacer(modifier = Modifier.height(16.dp))
 
                                     Button(
-                                        onClick = { exportBackupLauncher.launch("apps_widget_backup_${System.currentTimeMillis()}.json") },
+                                        onClick = {
+                                            CategoryWidgetProvider.performHaptic(context)
+                                            exportBackupLauncher.launch("apps_widget_backup_${System.currentTimeMillis()}.json")
+                                        },
                                         modifier = Modifier.fillMaxWidth().height(48.dp),
                                         shape = RoundedCornerShape(14.dp),
                                         colors = ButtonDefaults.buttonColors(containerColor = theme.surface),
@@ -1359,7 +1514,10 @@ fun MainScreen(
                                     Spacer(modifier = Modifier.height(10.dp))
 
                                     OutlinedButton(
-                                        onClick = { importBackupLauncher.launch(arrayOf("application/json", "text/*", "*/*")) },
+                                        onClick = {
+                                            CategoryWidgetProvider.performHaptic(context)
+                                            importBackupLauncher.launch(arrayOf("application/json", "text/*", "*/*"))
+                                        },
                                         modifier = Modifier.fillMaxWidth().height(48.dp),
                                         shape = RoundedCornerShape(14.dp),
                                         border = BorderStroke(1.dp, theme.cardBorder)
@@ -1401,7 +1559,10 @@ fun MainScreen(
 
                                 if (mainSearchQuery.isNotEmpty()) {
                                     IconButton(
-                                        onClick = { mainSearchQuery = "" },
+                                        onClick = {
+                                            CategoryWidgetProvider.performHaptic(context)
+                                            mainSearchQuery = ""
+                                        },
                                         modifier = Modifier.size(24.dp)
                                     ) {
                                         Text("✕", color = theme.textSecondary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
@@ -1427,7 +1588,10 @@ fun MainScreen(
                                         else -> IconType.SETTINGS
                                     },
                                     theme = theme,
-                                    onClick = { currentScreen = screen }
+                                    onClick = {
+                                        CategoryWidgetProvider.performHaptic(context)
+                                        currentScreen = screen
+                                    }
                                 )
                             }
                         }
@@ -1462,18 +1626,56 @@ fun MainScreen(
                         label = "Dark Mode",
                         isSelected = theme.isDark,
                         theme = theme,
-                        onClick = { onToggleTheme(true) }
+                        onClick = {
+                            CategoryWidgetProvider.performHaptic(context)
+                            onToggleTheme(true)
+                        }
                     )
                     NovaRadioOption(
                         label = "Light Mode",
                         isSelected = !theme.isDark,
                         theme = theme,
-                        onClick = { onToggleTheme(false) }
+                        onClick = {
+                            CategoryWidgetProvider.performHaptic(context)
+                            onToggleTheme(false)
+                        }
                     )
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
                     HorizontalDivider(color = theme.divider)
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Haptics Toggle
+                    Text(
+                        text = "Haptic Feedback",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = theme.textPrimary
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    NovaRadioOption(
+                        label = "Haptics Enabled",
+                        isSelected = hapticsEnabled,
+                        theme = theme,
+                        onClick = {
+                            hapticsEnabled = true
+                            prefs.edit().putBoolean("haptics_enabled", true).apply()
+                            CategoryWidgetProvider.performHaptic(context)
+                        }
+                    )
+                    NovaRadioOption(
+                        label = "Haptics Disabled",
+                        isSelected = !hapticsEnabled,
+                        theme = theme,
+                        onClick = {
+                            hapticsEnabled = false
+                            prefs.edit().putBoolean("haptics_enabled", false).apply()
+                        }
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                    HorizontalDivider(color = theme.divider)
+                    Spacer(modifier = Modifier.height(14.dp))
 
                     Text(
                         text = "Reset All Data",
@@ -1490,7 +1692,10 @@ fun MainScreen(
                     Spacer(modifier = Modifier.height(12.dp))
 
                     Button(
-                        onClick = { showResetConfirmDialog = true },
+                        onClick = {
+                            CategoryWidgetProvider.performHaptic(context)
+                            showResetConfirmDialog = true
+                        },
                         modifier = Modifier.fillMaxWidth().height(46.dp),
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
@@ -1500,7 +1705,10 @@ fun MainScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showSettingsDialog = false }) {
+                TextButton(onClick = {
+                    CategoryWidgetProvider.performHaptic(context)
+                    showSettingsDialog = false
+                }) {
                     Text("Done", color = theme.textPrimary, fontWeight = FontWeight.SemiBold)
                 }
             },
@@ -1544,6 +1752,7 @@ fun MainScreen(
 
                         showResetConfirmDialog = false
                         showSettingsDialog = false
+                        CategoryWidgetProvider.performHaptic(context)
                         Toast.makeText(context, "Reset complete!", Toast.LENGTH_SHORT).show()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
@@ -1587,6 +1796,7 @@ fun MainScreen(
                             AppIconHelper.clearCache(context)
                             editingAppForIcon = null
                             iconUpdateCounter++
+                            CategoryWidgetProvider.performHaptic(context)
                             Toast.makeText(context, "Reset to default icon", Toast.LENGTH_SHORT).show()
                         },
                         modifier = Modifier.fillMaxWidth().height(44.dp),
@@ -1616,6 +1826,7 @@ fun MainScreen(
                                                 AppIconHelper.clearCache(context)
                                                 editingAppForIcon = null
                                                 iconUpdateCounter++
+                                                CategoryWidgetProvider.performHaptic(context)
                                                 Toast.makeText(context, "Symbol applied!", Toast.LENGTH_SHORT).show()
                                             },
                                         contentAlignment = Alignment.Center
@@ -1675,6 +1886,7 @@ fun MainScreen(
                                                     }
                                                 }
                                                 showIconDialog = false
+                                                CategoryWidgetProvider.performHaptic(context)
                                             },
                                         contentAlignment = Alignment.Center
                                     ) {
@@ -1706,6 +1918,7 @@ fun MainScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
+                                    CategoryWidgetProvider.performHaptic(context)
                                     sidebarFont = key
                                     showFontDialog = false
                                 }
@@ -1753,6 +1966,7 @@ fun MainScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
+                                    CategoryWidgetProvider.performHaptic(context)
                                     clockFont = key
                                     showClockFontDialog = false
                                 }
@@ -1828,6 +2042,7 @@ fun MainScreen(
                             categories = categories + newCat
                             editingCategoryId = newCat.id
                             showAddCategoryDialog = false
+                            CategoryWidgetProvider.performHaptic(context)
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = theme.surface),
@@ -1877,6 +2092,7 @@ fun MainScreen(
                                 if (it.id == currentCat.id) it.copy(name = trimmed) else it
                             }
                             showRenameDialog = false
+                            CategoryWidgetProvider.performHaptic(context)
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = theme.surface),
@@ -2060,6 +2276,7 @@ enum class IconType {
     CHECK
 }
 
+// 4. Authentic 6-Tooth Mechanical Setting Gear Icon
 @Composable
 fun NovaOutlineIcon(type: IconType, tint: Color, size: Dp) {
     Canvas(modifier = Modifier.size(size)) {
@@ -2102,8 +2319,28 @@ fun NovaOutlineIcon(type: IconType, tint: Color, size: Dp) {
                 drawLine(tint, Offset(w * 0.66f, h * 0.66f), Offset(w * 0.92f, h * 0.92f), strokeWidth = 2.dp.toPx())
             }
             IconType.SETTINGS -> {
-                drawCircle(tint, radius = w * 0.22f, center = Offset(w * 0.5f, h * 0.5f), style = stroke)
-                drawCircle(tint, radius = w * 0.40f, center = Offset(w * 0.5f, h * 0.5f), style = stroke)
+                val cx = w / 2f
+                val cy = h / 2f
+                val numTeeth = 6
+                val rOuter = w * 0.45f
+                val rInner = w * 0.32f
+                val rHole = w * 0.13f
+                val path = Path()
+                val steps = numTeeth * 4
+
+                for (i in 0 until steps) {
+                    val angle = (i * 2.0 * Math.PI / steps - Math.PI / 2.0).toFloat()
+                    val r = when (i % 4) {
+                        0, 1 -> rOuter
+                        else -> rInner
+                    }
+                    val x = cx + r * kotlin.math.cos(angle)
+                    val y = cy + r * kotlin.math.sin(angle)
+                    if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                }
+                path.close()
+                drawPath(path, tint, style = stroke)
+                drawCircle(tint, radius = rHole, center = Offset(cx, cy), style = stroke)
             }
             IconType.CHECK -> {
                 val path = Path().apply {
@@ -2117,12 +2354,17 @@ fun NovaOutlineIcon(type: IconType, tint: Color, size: Dp) {
     }
 }
 
+// 3. App Item Row with Reordering Arrows (▲ and ▼)
 @Composable
 fun AppItemRow(
     app: AppModel,
     isChecked: Boolean,
+    orderIndex: Int,
+    totalSelected: Int,
     theme: NovaThemePalette,
     onToggle: () -> Unit,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit,
     onChangeIcon: () -> Unit,
     updateCounter: Int
 ) {
@@ -2170,19 +2412,46 @@ fun AppItemRow(
         Spacer(modifier = Modifier.width(12.dp))
 
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = app.appName,
-                color = theme.textPrimary,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = app.appName,
+                    color = theme.textPrimary,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1
+                )
+                if (isChecked && orderIndex != -1) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "#${orderIndex + 1}",
+                        color = theme.primary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
             Text(
                 text = app.packageName,
                 color = theme.textSecondary,
                 fontSize = 11.sp,
                 maxLines = 1
             )
+        }
+
+        // App Grid Swap/Reorder Controls (Up/Down)
+        if (isChecked && orderIndex != -1) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (orderIndex > 0) {
+                    IconButton(onClick = onMoveUp, modifier = Modifier.size(28.dp)) {
+                        Text("▲", fontSize = 11.sp, color = theme.textPrimary, fontWeight = FontWeight.Bold)
+                    }
+                }
+                if (orderIndex < totalSelected - 1) {
+                    IconButton(onClick = onMoveDown, modifier = Modifier.size(28.dp)) {
+                        Text("▼", fontSize = 11.sp, color = theme.textPrimary, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
         }
 
         TextButton(

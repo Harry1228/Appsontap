@@ -2,6 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <application
         android:allowBackup="true"
@@ -28,13 +29,13 @@
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="com.example.categorydockwidget.ACTION_SWITCH_CATEGORY" />
                 <action android:name="com.example.categorydockwidget.ACTION_LAUNCH_APP" />
+                <action android:name="com.example.categorydockwidget.ACTION_TOGGLE_APPS" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/category_widget_info" />
         </receiver>
 
-        <!-- Service for scrollable app grid in widget -->
         <service
             android:name=".widget.AppGridWidgetService"
             android:permission="android.permission.BIND_REMOTEVIEWS"
