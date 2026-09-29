@@ -7,6 +7,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.util.Base64
 import android.widget.Toast
@@ -200,7 +201,7 @@ fun MainScreen(
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE) }
 
-    var selectedMainTab by remember { mutableIntStateOf(1) }
+    var selectedMainTab by remember { mutableIntStateOf(0) }
     var editingCategoryId by remember { mutableStateOf<String?>(null) }
 
     var showSettingsDialog by remember { mutableStateOf(false) }
@@ -212,6 +213,10 @@ fun MainScreen(
     var showIconDialog by remember { mutableStateOf(false) }
     var showFontDialog by remember { mutableStateOf(false) }
     var showClockFontDialog by remember { mutableStateOf(false) }
+
+    // App-specific icon customization state
+    var editingAppForIcon by remember { mutableStateOf<AppModel?>(null) }
+    var iconUpdateCounter by remember { mutableIntStateOf(0) }
 
     var categories by remember {
         val rawJson = prefs.getString("categories_json", null)
@@ -281,9 +286,15 @@ fun MainScreen(
         }
     }
 
-    val filteredApps = remember(searchQuery, installedApps) {
+    val currentCategory = categories.firstOrNull { it.id == editingCategoryId }
+    val selectedSet = remember(currentCategory?.packageNames, editingCategoryId) {
+        currentCategory?.packageNames?.toSet() ?: emptySet()
+    }
+
+    // 1. FILTER & SORT: Selected apps float automatically to the top
+    val filteredApps = remember(searchQuery, installedApps, selectedSet) {
         val query = searchQuery.trim().lowercase()
-        if (query.isBlank()) {
+        val list = if (query.isBlank()) {
             installedApps
         } else {
             val isPhoneQuery = query == "phone" || query == "call" || query == "dial" || query == "dialer"
@@ -299,8 +310,113 @@ fun MainScreen(
                 ))
             }
         }
+
+        // Float selected apps directly to top
+        list.sortedWith(
+            compareByDescending<AppModel> { app ->
+                selectedSet.contains(app.id) || selectedSet.contains(app.packageName)
+            }.thenBy { it.appName.lowercase() }
+        )
     }
 
+    // Modern Minimal Category & App Symbols
+    val modernCuratedSymbols = listOf(
+        // Core & Action
+        "⌂", "✦", "◈", "⌘", "⚡", "⚙", "◉", "★",
+        // Communication
+        "✆", "✉", "💬", "◎", "👥", "🔔", "📣", "📡",
+        // Finance
+        "💳", "🏛", "💼", "₹", "$", "📈", "💰", "🏷",
+        // Tools & Tech
+        "🛠", "✎", "⌕", "📁", "🔒", "⊞", "▦", "⬡",
+        // Media & Entertainment
+        "▶", "♫", "🎬", "📷", "🎮", "🕹", "🎧", "📺",
+        // Travel & Lifestyle
+        "✈", "🧭", "🚗", "☕", "🛒", "🛍", "♥", "⏱"
+    )
+
+    // Launcher for App-Specific Custom Gallery Icon
+    val appGalleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null && editingAppForIcon != null) {
+            try {
+                val app = editingAppForIcon!!
+                val inputStream = context.contentResolver.openInputStream(uri)
+                val rawBitmap = BitmapFactory.decodeStream(inputStream)
+                if (rawBitmap != null) {
+                    val iconDir = File(context.filesDir, "category_icons")
+                    if (!iconDir.exists()) iconDir.mkdirs()
+                    val fileName = "app_${app.packageName.replace('.', '_')}_${System.currentTimeMillis()}.png"
+                    val file = File(iconDir, fileName)
+
+                    val minDim = minOf(rawBitmap.width, rawBitmap.height)
+                    val square = Bitmap.createBitmap(rawBitmap, (rawBitmap.width - minDim) / 2, (rawBitmap.height - minDim) / 2, minDim, minDim)
+                    val scaled = Bitmap.createScaledBitmap(square, 96, 96, true)
+                    FileOutputStream(file).use { out ->
+                        scaled.compress(Bitmap.CompressFormat.PNG, 100, out)
+                    }
+
+                    prefs.edit().putString("custom_app_icon_${app.packageName}", "gallery:$fileName").apply()
+                    AppIconHelper.clearCache(context)
+                    editingAppForIcon = null
+                    iconUpdateCounter++
+                    Toast.makeText(context, "App icon updated!", Toast.LENGTH_SHORT).show()
+                }
+            } catch (_: Exception) {
+                Toast.makeText(context, "Failed to load image", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    // 5. NOVA-STYLE APP SHORTCUT PICKER
+    val shortcutPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK && result.data != null && editingCategoryId != null) {
+            val intentData = result.data!!
+            val shortcutIntent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                intentData.getParcelableExtra(Intent.EXTRA_SHORTCUT_INTENT, Intent::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                intentData.getParcelableExtra(Intent.EXTRA_SHORTCUT_INTENT)
+            }
+
+            val shortcutName = intentData.getStringExtra(Intent.EXTRA_SHORTCUT_NAME) ?: "Shortcut"
+            val shortcutBitmap: Bitmap? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                intentData.getParcelableExtra(Intent.EXTRA_SHORTCUT_ICON, Bitmap::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                intentData.getParcelableExtra(Intent.EXTRA_SHORTCUT_ICON)
+            }
+
+            if (shortcutIntent != null) {
+                val shortcutId = "sc_${System.currentTimeMillis()}"
+                val iconDir = File(context.filesDir, "cached_icons")
+                if (!iconDir.exists()) iconDir.mkdirs()
+
+                if (shortcutBitmap != null) {
+                    val iconFile = File(iconDir, "$shortcutId.png")
+                    FileOutputStream(iconFile).use { out ->
+                        shortcutBitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                    }
+                }
+
+                prefs.edit()
+                    .putString("shortcut_uri_$shortcutId", shortcutIntent.toUri(Intent.URI_INTENT_SCHEME))
+                    .putString("shortcut_label_$shortcutId", shortcutName)
+                    .apply()
+
+                val shortcutKey = "shortcut:$shortcutId"
+                categories = categories.map {
+                    if (it.id == editingCategoryId) it.copy(packageNames = it.packageNames + shortcutKey) else it
+                }
+                Toast.makeText(context, "Shortcut \"$shortcutName\" added!", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    // Backup Export
     val exportBackupLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
     ) { uri: Uri? ->
@@ -348,6 +464,7 @@ fun MainScreen(
         }
     }
 
+    // Backup Restore
     val importBackupLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
@@ -418,6 +535,7 @@ fun MainScreen(
         }
     }
 
+    // Category Gallery Picker
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -432,8 +550,8 @@ fun MainScreen(
                     val file = File(iconDir, fileName)
 
                     val minDim = minOf(rawBitmap.width, rawBitmap.height)
-                    val squareBitmap = Bitmap.createBitmap(rawBitmap, (rawBitmap.width - minDim) / 2, (rawBitmap.height - minDim) / 2, minDim, minDim)
-                    val scaled = Bitmap.createScaledBitmap(squareBitmap, 128, 128, true)
+                    val square = Bitmap.createBitmap(rawBitmap, (rawBitmap.width - minDim) / 2, (rawBitmap.height - minDim) / 2, minDim, minDim)
+                    val scaled = Bitmap.createScaledBitmap(square, 128, 128, true)
                     FileOutputStream(file).use { out ->
                         scaled.compress(Bitmap.CompressFormat.PNG, 100, out)
                     }
@@ -551,8 +669,6 @@ fun MainScreen(
 
             // TAB 0: CATEGORIES
             if (selectedMainTab == 0) {
-                val currentCategory = categories.firstOrNull { it.id == editingCategoryId }
-
                 if (currentCategory != null) {
                     Column(modifier = Modifier.fillMaxSize()) {
                         Row(
@@ -641,6 +757,28 @@ fun MainScreen(
                             }
                         }
 
+                        // App Shortcuts Integration Button (Nova-grade)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 2.dp),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            Button(
+                                onClick = {
+                                    val pickIntent = Intent(Intent.ACTION_CREATE_SHORTCUT)
+                                    val chooser = Intent.createChooser(pickIntent, "Add App Shortcut")
+                                    shortcutPickerLauncher.launch(chooser)
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Text("✦ + Add App Shortcut", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+                        }
+
+                        // 4. SEARCH BAR WITH CLEAR CROSS BUTTON
                         OutlinedTextField(
                             value = searchQuery,
                             onValueChange = { searchQuery = it },
@@ -650,6 +788,18 @@ fun MainScreen(
                                 .padding(horizontal = 16.dp, vertical = 4.dp),
                             shape = RoundedCornerShape(14.dp),
                             singleLine = true,
+                            trailingIcon = {
+                                if (searchQuery.isNotEmpty()) {
+                                    IconButton(onClick = { searchQuery = "" }) {
+                                        Text(
+                                            text = "✕",
+                                            color = Color(0xFF6B7280),
+                                            fontSize = 16.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            },
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedContainerColor = Color.White,
                                 unfocusedContainerColor = Color.White,
@@ -658,14 +808,12 @@ fun MainScreen(
                             )
                         )
 
+                        // App List with selected apps floated to top
                         if (isLoading) {
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 CircularProgressIndicator(color = Color(0xFF7C3AED))
                             }
                         } else {
-                            val selectedSet = remember(currentCategory.packageNames) {
-                                currentCategory.packageNames.toSet()
-                            }
                             LazyColumn(
                                 modifier = Modifier.fillMaxSize(),
                                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
@@ -676,8 +824,7 @@ fun MainScreen(
                                 ) { app ->
                                     val isChecked = selectedSet.contains(app.id) || selectedSet.contains(app.packageName)
                                     AppItemRow(
-                                        appName = app.appName,
-                                        packageName = app.packageName,
+                                        app = app,
                                         isChecked = isChecked,
                                         onToggle = {
                                             val updatedList = if (isChecked) {
@@ -688,7 +835,11 @@ fun MainScreen(
                                             categories = categories.map {
                                                 if (it.id == currentCategory.id) it.copy(packageNames = updatedList) else it
                                             }
-                                        }
+                                        },
+                                        onChangeIcon = {
+                                            editingAppForIcon = app
+                                        },
+                                        updateCounter = iconUpdateCounter
                                     )
                                 }
                             }
@@ -1028,7 +1179,7 @@ fun MainScreen(
                 }
             }
 
-            // TAB 2: GENERAL (Icon Pack Settings)
+            // TAB 2: GENERAL (Exclusive Default vs Icon Pack)
             if (selectedMainTab == 2) {
                 LazyColumn(
                     modifier = Modifier
@@ -1111,7 +1262,151 @@ fun MainScreen(
         }
     }
 
-    // Top-Right Settings Dialog
+    // 2. CHANGE SPECIFIC APP ICON DIALOG
+    if (editingAppForIcon != null) {
+        val app = editingAppForIcon!!
+        AlertDialog(
+            onDismissRequest = { editingAppForIcon = null },
+            title = {
+                Text(
+                    text = "Icon for ${app.appName}",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = Color(0xFF1E1B2E)
+                )
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Button(
+                        onClick = { appGalleryLauncher.launch("image/*") },
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
+                    ) {
+                        Text("📁 Upload Icon from Gallery", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedButton(
+                        onClick = {
+                            prefs.edit().remove("custom_app_icon_${app.packageName}").remove("custom_app_icon_${app.id}").apply()
+                            AppIconHelper.clearCache(context)
+                            editingAppForIcon = null
+                            iconUpdateCounter++
+                            Toast.makeText(context, "Reset to default app icon", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.fillMaxWidth().height(44.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, Color(0xFFEF4444))
+                    ) {
+                        Text("🔄 Reset to Default Icon", color = Color(0xFFEF4444), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("Or choose a modern minimal symbol:", color = Color.Gray, fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp)
+                    ) {
+                        items(modernCuratedSymbols.chunked(6)) { rowIcons ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                rowIcons.forEach { symbol ->
+                                    Box(
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .background(Color(0xFFF3E8FF), CircleShape)
+                                            .clickable {
+                                                prefs.edit().putString("custom_app_icon_${app.packageName}", "symbol:$symbol").apply()
+                                                AppIconHelper.clearCache(context)
+                                                editingAppForIcon = null
+                                                iconUpdateCounter++
+                                                Toast.makeText(context, "Symbol applied!", Toast.LENGTH_SHORT).show()
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(symbol, fontSize = 18.sp, color = Color(0xFF7C3AED), fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { editingAppForIcon = null }) {
+                    Text("Cancel", color = Color(0xFF7C3AED))
+                }
+            },
+            containerColor = Color.White
+        )
+    }
+
+    // 3. CATEGORY ICON DIALOG: Clean modern symbols without letter text box
+    if (showIconDialog) {
+        AlertDialog(
+            onDismissRequest = { showIconDialog = false },
+            title = { Text("Category Icon", fontWeight = FontWeight.Bold, color = Color(0xFF1E1B2E)) },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Button(
+                        onClick = { galleryLauncher.launch("image/*") },
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
+                    ) {
+                        Text("📁 Upload Icon from Gallery", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Text("Or choose a modern minimal symbol:", color = Color.Gray, fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 280.dp)
+                    ) {
+                        items(modernCuratedSymbols.chunked(6)) { rowIcons ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                rowIcons.forEach { symbol ->
+                                    Box(
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .background(Color(0xFFF3E8FF), CircleShape)
+                                            .clickable {
+                                                if (currentCategory != null) {
+                                                    categories = categories.map {
+                                                        if (it.id == currentCategory.id) it.copy(icon = symbol) else it
+                                                    }
+                                                }
+                                                showIconDialog = false
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(symbol, fontSize = 18.sp, color = Color(0xFF7C3AED), fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showIconDialog = false }) {
+                    Text("Cancel", color = Color.Gray)
+                }
+            },
+            containerColor = Color.White
+        )
+    }
+
+    // Preferences & Backup Dialog
     if (showSettingsDialog) {
         AlertDialog(
             onDismissRequest = { showSettingsDialog = false },
@@ -1394,7 +1689,6 @@ fun MainScreen(
 
     // Rename Category Dialog
     if (showRenameDialog) {
-        val currentCategory = categories.firstOrNull { it.id == editingCategoryId }
         AlertDialog(
             onDismissRequest = { showRenameDialog = false },
             title = { Text("Rename Category", fontWeight = FontWeight.Bold, color = Color(0xFF1E1B2E)) },
@@ -1426,82 +1720,6 @@ fun MainScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showRenameDialog = false }) {
-                    Text("Cancel", color = Color.Gray)
-                }
-            },
-            containerColor = Color.White
-        )
-    }
-
-    // Category Icon Dialog
-    if (showIconDialog) {
-        val currentCategory = categories.firstOrNull { it.id == editingCategoryId }
-
-        val bAndWIcons = listOf(
-            "★", "☆", "🏠", "📁", "⚡", "🔍", "⚙️", "⏱️",
-            "🏛️", "💳", "💰", "📈", "🏦", "💵",
-            "🤖", "🧠", "💻", "🔬", "📡", "🌐",
-            "🛠️", "🔧", "🔨", "📱", "🔋", "🔑",
-            "✈️", "🧭", "🚗", "🚆", "📍", "🗺️",
-            "🎬", "🍿", "📺", "🎵", "🎧", "📷",
-            "🎮", "🕹️", "🎲", "👾", "🎯", "🏆",
-            "💬", "✉️", "📞", "👥", "🔔", "📣",
-            "🛍️", "🛒", "🏷️", "☕", "🍕", "🍔"
-        )
-
-        AlertDialog(
-            onDismissRequest = { showIconDialog = false },
-            title = { Text("Category Icon", fontWeight = FontWeight.Bold, color = Color(0xFF1E1B2E)) },
-            text = {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Button(
-                        onClick = { galleryLauncher.launch("image/*") },
-                        modifier = Modifier.fillMaxWidth().height(48.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
-                    ) {
-                        Text("📁 Upload Icon from Gallery", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-                    Text("Or select a symbol:", color = Color.Gray, fontSize = 12.sp)
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 280.dp)
-                    ) {
-                        items(bAndWIcons.chunked(6)) { rowIcons ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                rowIcons.forEach { symbol ->
-                                    Box(
-                                        modifier = Modifier
-                                            .size(38.dp)
-                                            .background(Color(0xFFF3E8FF), CircleShape)
-                                            .clickable {
-                                                if (currentCategory != null) {
-                                                    categories = categories.map {
-                                                        if (it.id == currentCategory.id) it.copy(icon = symbol) else it
-                                                    }
-                                                }
-                                                showIconDialog = false
-                                            },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(symbol, fontSize = 18.sp)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showIconDialog = false }) {
                     Text("Cancel", color = Color.Gray)
                 }
             },
@@ -1601,11 +1819,17 @@ private fun RadioOption(
 
 @Composable
 private fun AppItemRow(
-    appName: String,
-    packageName: String,
+    app: AppModel,
     isChecked: Boolean,
-    onToggle: () -> Unit
+    onToggle: () -> Unit,
+    onChangeIcon: () -> Unit,
+    updateCounter: Int
 ) {
+    val context = LocalContext.current
+    val appBitmap = remember(app.id, updateCounter) {
+        AppIconHelper.getAppBitmap(context, app.id) ?: AppIconHelper.getAppBitmap(context, app.packageName)
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1613,24 +1837,62 @@ private fun AppItemRow(
             .background(Color.White, RoundedCornerShape(14.dp))
             .border(1.dp, Color(0xFFEDE9FE), RoundedCornerShape(14.dp))
             .clickable(onClick = onToggle)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // App icon preview with quick-tap customization
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .clip(CircleShape)
+                .clickable(onClick = onChangeIcon),
+            contentAlignment = Alignment.Center
+        ) {
+            if (appBitmap != null) {
+                Image(
+                    bitmap = appBitmap.asImageBitmap(),
+                    contentDescription = app.appName,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color(0xFFEDE9FE)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("⚙", color = Color(0xFF7C3AED))
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.width(12.dp))
+
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = appName,
+                text = app.appName,
                 color = Color(0xFF1E1B2E),
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1
             )
             Text(
-                text = packageName,
+                text = app.packageName,
                 color = Color(0xFF6B7280),
                 fontSize = 11.sp,
                 maxLines = 1
             )
         }
+
+        // Tap icon button to trigger custom app icon dialog
+        TextButton(
+            onClick = onChangeIcon,
+            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+        ) {
+            Text("Icon ✎", fontSize = 11.sp, color = Color(0xFF7C3AED), fontWeight = FontWeight.Bold)
+        }
+
         Checkbox(
             checked = isChecked,
             onCheckedChange = null,

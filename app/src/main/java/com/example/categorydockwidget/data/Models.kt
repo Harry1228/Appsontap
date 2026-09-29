@@ -7,6 +7,9 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Typeface
 import android.util.LruCache
 import android.util.Xml
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -46,7 +49,7 @@ object WidgetKeys {
 }
 
 object AppIconHelper {
-    private val iconCache = LruCache<String, Bitmap>(100)
+    private val iconCache = LruCache<String, Bitmap>(120)
     private val intentCache = HashMap<String, Intent?>()
     private var iconPackMappingCache: Pair<String, Map<String, String>>? = null
 
@@ -61,6 +64,21 @@ object AppIconHelper {
 
     fun getLaunchIntent(context: Context, appKey: String): Intent? {
         return intentCache.getOrPut(appKey) {
+            val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
+
+            // Handle App Shortcuts
+            if (appKey.startsWith("shortcut:")) {
+                val scId = appKey.removePrefix("shortcut:")
+                val uriString = prefs.getString("shortcut_uri_$scId", null)
+                if (uriString != null) {
+                    try {
+                        return@getOrPut Intent.parseUri(uriString, Intent.URI_INTENT_SCHEME).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                    } catch (_: Exception) {}
+                }
+            }
+
             val pm = context.packageManager
             if (appKey.contains("/")) {
                 val parts = appKey.split("/")
@@ -223,8 +241,51 @@ object AppIconHelper {
         }
     }
 
+    private fun createSymbolBitmap(symbol: String): Bitmap {
+        val size = 96
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            textAlign = Paint.Align.CENTER
+            textSize = 46f
+            typeface = Typeface.DEFAULT_BOLD
+        }
+        val yPos = (size / 2f) - ((paint.descent() + paint.ascent()) / 2f)
+        canvas.drawText(symbol, size / 2f, yPos, paint)
+        return bitmap
+    }
+
     fun getAppBitmap(context: Context, appKey: String): Bitmap? {
         val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
+
+        // 1. Check for individual app icon custom override
+        val customOverride = prefs.getString("custom_app_icon_$appKey", null)
+            ?: prefs.getString("custom_app_icon_${appKey.substringBefore('/')}", null)
+
+        if (customOverride != null) {
+            if (customOverride.startsWith("gallery:")) {
+                val file = File(context.filesDir, "category_icons/${customOverride.removePrefix("gallery:")}")
+                if (file.exists()) {
+                    val bmp = BitmapFactory.decodeFile(file.absolutePath)
+                    if (bmp != null) return bmp
+                }
+            } else if (customOverride.startsWith("symbol:")) {
+                return createSymbolBitmap(customOverride.removePrefix("symbol:"))
+            }
+        }
+
+        // 2. Handle App Shortcuts
+        if (appKey.startsWith("shortcut:")) {
+            val scId = appKey.removePrefix("shortcut:")
+            val iconFile = File(context.filesDir, "cached_icons/$scId.png")
+            if (iconFile.exists()) {
+                val scBitmap = BitmapFactory.decodeFile(iconFile.absolutePath)
+                if (scBitmap != null) return scBitmap
+            }
+            return createSymbolBitmap("✦")
+        }
+
         val unifiedStyle = prefs.getString("unified_icon_style", "default") ?: "default"
         val sanitizedKey = appKey.replace('/', '_')
         val cacheKey = "${sanitizedKey}_${unifiedStyle}"

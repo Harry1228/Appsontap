@@ -44,7 +44,7 @@ object AppRepository {
             }
             val launcherActivities = pm.queryIntentActivities(launcherIntent, 0)
 
-            // 2. Dialer & Phone activities (captures OEM phone apps sharing contact packages)
+            // 2. Dialer & Phone activities
             val dialIntent = Intent(Intent.ACTION_DIAL)
             val dialActivities = pm.queryIntentActivities(dialIntent, 0)
 

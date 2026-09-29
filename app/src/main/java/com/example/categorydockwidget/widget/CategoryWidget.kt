@@ -85,7 +85,7 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             paint.textSize = computedSize
 
             val textWidth = paint.measureText(text)
-            val maxAvailableWidth = width * 0.82f
+            val maxAvailableWidth = width * 0.85f
             if (textWidth > maxAvailableWidth && textWidth > 0f) {
                 computedSize *= (maxAvailableWidth / textWidth)
                 paint.textSize = computedSize
