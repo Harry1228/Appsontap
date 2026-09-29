@@ -10,7 +10,6 @@ import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
-import android.view.Gravity
 import android.widget.RemoteViews
 import com.example.categorydockwidget.R
 import com.example.categorydockwidget.ui.WidgetConfigActivity
@@ -61,21 +60,8 @@ class CategoryWidgetProvider : AppWidgetProvider() {
     }
 
     private fun updateWidget(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int) {
-        val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
+        // Safe check using standard widget layout inflation
         val views = RemoteViews(context.packageName, R.layout.widget_layout)
-
-        // Read sidebar alignment preference ("top", "center", "bottom")
-        val sidebarAlignment = prefs.getString("sidebar_alignment", "bottom") ?: "bottom"
-        val gravity = when (sidebarAlignment) {
-            "top" -> Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            "center" -> Gravity.CENTER_VERTICAL or Gravity.CENTER_HORIZONTAL
-            else -> Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-        }
-
-        // Apply gravity to anchor sidebar items correctly to top, center, or bottom
-        try {
-            views.setInt(R.id.sidebarContainer, "setGravity", gravity)
-        } catch (_: Exception) {}
 
         val configIntent = Intent(context, WidgetConfigActivity::class.java).apply {
             putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
