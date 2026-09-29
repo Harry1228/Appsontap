@@ -120,6 +120,54 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             }
         }
 
+        // Fast in-place switch: Updates only pill highlights and notifies the grid adapter
+        fun switchCategorySeamless(
+            context: Context,
+            appWidgetManager: AppWidgetManager,
+            appWidgetId: Int,
+            newCatId: String
+        ) {
+            val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
+            prefs.edit().putString("selected_category_$appWidgetId", newCatId).apply()
+
+            val rawJson = prefs.getString("categories_json", null)
+            val categories: List<Category> = if (rawJson != null) {
+                try {
+                    val type = object : TypeToken<List<Category>>() {}.type
+                    Gson().fromJson(rawJson, type) ?: emptyList()
+                } catch (_: Exception) {
+                    emptyList()
+                }
+            } else {
+                emptyList()
+            }
+
+            val sidebarPosition = prefs.getString("sidebar_position", "left") ?: "left"
+            val layoutRes = if (sidebarPosition == "right") {
+                R.layout.widget_category_dock
+            } else {
+                R.layout.widget_category_dock_left
+            }
+
+            // Incremental update: does not disconnect the GridView or re-inflate the root hierarchy
+            val partialViews = RemoteViews(context.packageName, layoutRes)
+
+            for (j in CAT_CONTAINER_IDS.indices) {
+                if (j < categories.size) {
+                    val cat = categories[j]
+                    val isSelected = cat.id == newCatId
+                    partialViews.setImageViewResource(
+                        CAT_BG_IDS[j],
+                        if (isSelected) R.drawable.pill_active else R.drawable.pill_inactive
+                    )
+                }
+            }
+
+            appWidgetManager.partiallyUpdateAppWidget(appWidgetId, partialViews)
+            appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.app_grid_view)
+        }
+
+        // Full setup update (called on initial placement, reboot, or configuration save)
         fun updateWidget(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int) {
             try {
                 val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
@@ -242,7 +290,7 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                     }
                 }
 
-                // 4. Scrollable GridView Connection
+                // 4. Bind GridView adapter (only needed on full refresh)
                 val serviceIntent = Intent(context, AppGridWidgetService::class.java).apply {
                     putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
                     data = Uri.parse(toUri(Intent.URI_INTENT_SCHEME))
@@ -291,11 +339,9 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                     AppWidgetManager.INVALID_APPWIDGET_ID
                 )
                 if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
-                    val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
-                    prefs.edit().putString("selected_category_$appWidgetId", catId).apply()
-
                     val appWidgetManager = AppWidgetManager.getInstance(context)
-                    updateWidget(context, appWidgetManager, appWidgetId)
+                    // Fast partial switch eliminates the screen flash & re-inflation glitch
+                    switchCategorySeamless(context, appWidgetManager, appWidgetId, catId)
                 }
             }
             ACTION_LAUNCH_APP -> {
