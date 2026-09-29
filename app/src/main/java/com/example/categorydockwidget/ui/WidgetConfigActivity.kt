@@ -21,6 +21,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -95,7 +96,7 @@ class WidgetConfigActivity : ComponentActivity() {
 fun MainScreen(
     onSave: (List<Category>, String, Int) -> Unit
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE) }
 
     var selectedMainTab by remember { mutableIntStateOf(0) }
@@ -474,4 +475,114 @@ fun MainScreen(
                     onClick = {
                         val trimmed = newCategoryName.trim()
                         if (trimmed.isNotEmpty()) {
-                            val newId = "cat_" + System.currentT
+                            val newId = "cat_" + System.currentTimeMillis()
+                            val newCat = Category(id = newId, name = trimmed, packageNames = emptyList())
+                            categories = categories + newCat
+                            activeCategoryIndex = categories.size - 1
+                            showAddCategoryDialog = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6))
+                ) {
+                    Text("Create", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddCategoryDialog = false }) {
+                    Text("Cancel", color = Color.Gray)
+                }
+            },
+            containerColor = Color(0xFF1E1E26)
+        )
+    }
+
+    if (showSettingsDialog) {
+        AlertDialog(
+            onDismissRequest = { showSettingsDialog = false },
+            title = {
+                Text(
+                    text = "Apps on Tap",
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "Version 1.0.0 (High Performance)",
+                        color = Color.Gray,
+                        fontSize = 14.sp
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "Zero-latency native Android widget with dynamic custom categories and instant switching.",
+                        color = Color.White,
+                        fontSize = 13.sp
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = {
+                            categories = WidgetKeys.DEFAULT_CATEGORIES
+                            selectedAccentColor = "#3B82F6"
+                            selectedRadius = 24
+                            showSettingsDialog = false
+                            Toast.makeText(context, "Reset to defaults. Tap Save to apply.", Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF333340)),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("Reset to Defaults", color = Color.White)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showSettingsDialog = false }) {
+                    Text("Close", color = Color(0xFF3B82F6))
+                }
+            },
+            containerColor = Color(0xFF1E1E26)
+        )
+    }
+}
+
+@Composable
+private fun AppItemRow(
+    appName: String,
+    packageName: String,
+    isChecked: Boolean,
+    onToggle: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp)
+            .background(Color(0xFF1B1B22), RoundedCornerShape(12.dp))
+            .clickable(onClick = onToggle)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = appName,
+                color = Color.White,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1
+            )
+            Text(
+                text = packageName,
+                color = Color.Gray,
+                fontSize = 11.sp,
+                maxLines = 1
+            )
+        }
+        Checkbox(
+            checked = isChecked,
+            onCheckedChange = null,
+            colors = CheckboxDefaults.colors(
+                checkedColor = Color(0xFF3B82F6),
+                uncheckedColor = Color(0xFF555560)
+            )
+        )
+    }
+}
