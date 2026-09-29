@@ -38,21 +38,34 @@ class CategoryWidgetProvider : AppWidgetProvider() {
 
         fun updateWidget(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int) {
             val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
-            val selectedId = prefs.getString("selected_category_$appWidgetId", "work") ?: "work"
+            val selectedId = prefs.getString("selected_category_$appWidgetId", null)
             val rawJson = prefs.getString("categories_json", null)
+            val sidebarPosition = prefs.getString("sidebar_position", "right") ?: "right"
 
             val categories: List<Category> = if (rawJson != null) {
-                val type = object : TypeToken<List<Category>>() {}.type
-                Gson().fromJson(rawJson, type)
+                try {
+                    val type = object : TypeToken<List<Category>>() {}.type
+                    Gson().fromJson(rawJson, type) ?: emptyList()
+                } catch (_: Exception) {
+                    emptyList()
+                }
             } else {
-                WidgetKeys.DEFAULT_CATEGORIES
+                emptyList()
             }
+
+            // Choose layout based on user's left/right setting
+            val layoutRes = if (sidebarPosition == "left") {
+                R.layout.widget_category_dock_left
+            } else {
+                R.layout.widget_category_dock
+            }
+
+            val views = RemoteViews(context.packageName, layoutRes)
 
             val activeCategory = categories.firstOrNull { it.id == selectedId } ?: categories.firstOrNull()
             val apps = activeCategory?.packageNames ?: emptyList()
 
-            val views = RemoteViews(context.packageName, R.layout.widget_category_dock)
-
+            // 1. Populate app slots
             for (i in ICON_VIEW_IDS.indices) {
                 val viewId = ICON_VIEW_IDS[i]
                 if (i < apps.size) {
@@ -79,6 +92,7 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                 }
             }
 
+            // 2. Populate Category Dock Pills
             for (j in CAT_CONTAINER_IDS.indices) {
                 val containerId = CAT_CONTAINER_IDS[j]
                 val bgId = CAT_BG_IDS[j]

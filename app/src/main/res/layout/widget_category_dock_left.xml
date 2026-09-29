@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:orientation="horizontal"
+    android:padding="12dp">
+
+    <!-- LEFT: Category Dock Pills -->
+    <LinearLayout
+        android:layout_width="44dp"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:orientation="vertical">
+
+        <!-- Category 0 -->
+        <FrameLayout
+            android:id="@+id/cat_container_0"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:layout_marginBottom="6dp">
+
+            <ImageView
+                android:id="@+id/cat_bg_0"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:src="@drawable/pill_inactive" />
+
+            <TextView
+                android:id="@+id/cat_text_0"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:textColor="#FFFFFF"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </FrameLayout>
+
+        <!-- Category 1 -->
+        <FrameLayout
+            android:id="@+id/cat_container_1"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:layout_marginBottom="6dp">
+
+            <ImageView
+                android:id="@+id/cat_bg_1"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:src="@drawable/pill_inactive" />
+
+            <TextView
+                android:id="@+id/cat_text_1"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:textColor="#FFFFFF"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </FrameLayout>
+
+        <!-- Category 2 -->
+        <FrameLayout
+            android:id="@+id/cat_container_2"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:layout_marginBottom="6dp">
+
+            <ImageView
+                android:id="@+id/cat_bg_2"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:src="@drawable/pill_inactive" />
+
+            <TextView
+                android:id="@+id/cat_text_2"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:textColor="#FFFFFF"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </FrameLayout>
+
+        <!-- Category 3 -->
+        <FrameLayout
+            android:id="@+id/cat_container_3"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:visibility="gone">
+
+            <ImageView
+                android:id="@+id/cat_bg_3"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:src="@drawable/pill_inactive" />
+
+            <TextView
+                android:id="@+id/cat_text_3"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:textColor="#FFFFFF"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </FrameLayout>
+    </LinearLayout>
+
+    <!-- Vertical Divider -->
+    <ImageView
+        android:layout_width="1dp"
+        android:layout_height="match_parent"
+        android:layout_marginStart="8dp"
+        android:layout_marginEnd="8dp"
+        android:background="#22FFFFFF" />
+
+    <!-- RIGHT: 2-Row App Grid (8 Icons) -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <!-- Row 1 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:id="@+id/app_icon_0"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:padding="6dp"
+                android:scaleType="fitCenter" />
+
+            <ImageView
+                android:id="@+id/app_icon_1"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:padding="6dp"
+                android:scaleType="fitCenter" />
+
+            <ImageView
+                android:id="@+id/app_icon_2"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:padding="6dp"
+                android:scaleType="fitCenter" />
+
+            <ImageView
+                android:id="@+id/app_icon_3"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:padding="6dp"
+                android:scaleType="fitCenter" />
+        </LinearLayout>
+
+        <!-- Row 2 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <ImageView
+                android:id="@+id/app_icon_4"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:padding="6dp"
+                android:scaleType="fitCenter" />
+
+            <ImageView
+                android:id="@+id/app_icon_5"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:padding="6dp"
+                android:scaleType="fitCenter" />
+
+            <ImageView
+                android:id="@+id/app_icon_6"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:padding="6dp"
+                android:scaleType="fitCenter" />
+
+            <ImageView
+                android:id="@+id/app_icon_7"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:padding="6dp"
+                android:scaleType="fitCenter" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

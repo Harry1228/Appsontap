@@ -29,11 +29,8 @@ object WidgetKeys {
     val SELECTED_CATEGORY_ID = stringPreferencesKey("selected_category_id")
     val CATEGORIES_JSON = stringPreferencesKey("categories_json")
 
-    val DEFAULT_CATEGORIES = listOf(
-        Category("work", "Work", listOf("com.google.android.gm", "com.android.chrome"), "💼"),
-        Category("social", "Social", listOf("com.whatsapp", "org.telegram.messenger"), "💬"),
-        Category("media", "Media", listOf("com.google.android.youtube", "com.spotify.music"), "🎵")
-    )
+    // Empty list by default — user creates all categories
+    val DEFAULT_CATEGORIES = emptyList<Category>()
 }
 
 object AppIconHelper {
