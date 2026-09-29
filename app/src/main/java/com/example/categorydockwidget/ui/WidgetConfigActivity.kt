@@ -310,15 +310,7 @@ fun MainScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 4.dp),
                     shape = RoundedCornerShape(12.dp),
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = Color(0xFF1B1B22),
-                        unfocusedContainerColor = Color(0xFF1B1B22),
-                        focusedBorderColor = Color(0xFF3B82F6),
-                        unfocusedBorderColor = Color(0xFF2C2C34),
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White
-                    )
+                    singleLine = true
                 )
 
                 if (isLoading) {
@@ -466,7 +458,20 @@ fun MainScreen(
                     Spacer(modifier = Modifier.height(12.dp))
                     OutlinedTextField(
                         value = newCategoryName,
-                        onValueChange = { if (it.length <= 12) newCategoryName = it },
-                        placeholder = { Text("Category name...", color = Color.DarkGray) },
+                        onValueChange = { text ->
+                            if (text.length <= 12) {
+                                newCategoryName = text
+                            }
+                        },
+                        placeholder = { Text("Category name...") },
                         singleLine = true,
-                
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val trimmed = newCategoryName.trim()
+                        if (trimmed.isNotEmpty()) {
+                            val newId = "cat_" + System.currentT
