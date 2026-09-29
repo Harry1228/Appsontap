@@ -53,7 +53,6 @@ class CategoryWidgetProvider : AppWidgetProvider() {
 
             val views = RemoteViews(context.packageName, R.layout.widget_category_dock)
 
-            // 1. Populate the 8 app slots
             for (i in ICON_VIEW_IDS.indices) {
                 val viewId = ICON_VIEW_IDS[i]
                 if (i < apps.size) {
@@ -80,7 +79,6 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                 }
             }
 
-            // 2. Populate Category Dock Buttons
             for (j in CAT_CONTAINER_IDS.indices) {
                 val containerId = CAT_CONTAINER_IDS[j]
                 val bgId = CAT_BG_IDS[j]
@@ -90,7 +88,7 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                     val cat = categories[j]
                     val isSelected = cat.id == activeCategory?.id
 
-                    views.setTextViewText(textId, cat.name.take(2).uppercase())
+                    views.setTextViewText(textId, cat.displayBadge)
                     views.setImageViewResource(
                         bgId,
                         if (isSelected) R.drawable.pill_active else R.drawable.pill_inactive

@@ -18,17 +18,21 @@ data class AppModel(
 data class Category(
     val id: String,
     val name: String,
-    val packageNames: List<String> = emptyList()
-)
+    val packageNames: List<String> = emptyList(),
+    val icon: String? = ""
+) {
+    val displayBadge: String
+        get() = if (!icon.isNullOrBlank()) icon else name.take(2).uppercase()
+}
 
 object WidgetKeys {
     val SELECTED_CATEGORY_ID = stringPreferencesKey("selected_category_id")
     val CATEGORIES_JSON = stringPreferencesKey("categories_json")
 
     val DEFAULT_CATEGORIES = listOf(
-        Category("work", "Work", listOf("com.google.android.gm", "com.android.chrome")),
-        Category("social", "Social", listOf("com.whatsapp", "org.telegram.messenger")),
-        Category("media", "Media", listOf("com.google.android.youtube", "com.spotify.music"))
+        Category("work", "Work", listOf("com.google.android.gm", "com.android.chrome"), "💼"),
+        Category("social", "Social", listOf("com.whatsapp", "org.telegram.messenger"), "💬"),
+        Category("media", "Media", listOf("com.google.android.youtube", "com.spotify.music"), "🎵")
     )
 }
 
@@ -43,13 +47,11 @@ object AppIconHelper {
     }
 
     fun getAppBitmap(context: Context, packageName: String): Bitmap? {
-        // 1. RAM hit (0ms)
         iconCache.get(packageName)?.let { return it }
 
         val iconDir = File(context.filesDir, "cached_icons")
         val iconFile = File(iconDir, "$packageName.png")
 
-        // 2. Persistent Disk Cache hit (~1-2ms even after cold process death)
         if (iconFile.exists()) {
             try {
                 val diskBitmap = BitmapFactory.decodeFile(iconFile.absolutePath)
@@ -60,7 +62,6 @@ object AppIconHelper {
             } catch (_: Exception) {}
         }
 
-        // 3. Fallback: Parse from system PackageManager once, then save to flash storage
         return try {
             val drawable = context.packageManager.getApplicationIcon(packageName)
             val size = 96
@@ -81,7 +82,6 @@ object AppIconHelper {
         }
     }
 
-    // Pre-cache all icons in background when saving settings
     fun prewarmIcons(context: Context, categories: List<Category>) {
         Thread {
             for (cat in categories) {
