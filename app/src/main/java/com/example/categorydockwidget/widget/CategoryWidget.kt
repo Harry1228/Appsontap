@@ -69,7 +69,7 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             val views = RemoteViews(context.packageName, layoutRes)
             val activeCategory = categories.firstOrNull { it.id == selectedId } ?: categories.firstOrNull()
 
-            // 1. Heading and Divider with styled TypefaceSpan
+            // 1. Heading with selected typeface
             val titleText = if (activeCategory != null) activeCategory.name.uppercase() else "APPS WIDGET"
             val titleSpan = SpannableString(titleText).apply {
                 setSpan(TypefaceSpan(sidebarFont), 0, titleText.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -86,7 +86,7 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             }
             views.setInt(R.id.sidebar_container, "setGravity", gravityValue)
 
-            // 3. Category Dock Pills with custom font styling
+            // 3. Category Dock Pills
             for (j in CAT_CONTAINER_IDS.indices) {
                 val containerId = CAT_CONTAINER_IDS[j]
                 val bgId = CAT_BG_IDS[j]

@@ -104,12 +104,12 @@ class WidgetConfigActivity : ComponentActivity() {
         AppIconHelper.prewarmIcons(this, categories)
         CategoryWidgetProvider.updateAllWidgets(this)
 
-        Toast.makeText(this, "Settings Applied!", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Settings Applied & Widget Updated!", Toast.LENGTH_SHORT).show()
         if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
             val resultValue = Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
             setResult(Activity.RESULT_OK, resultValue)
         }
-        finish()
+        // Removed finish() to stay in the app after saving
     }
 }
 
@@ -124,12 +124,14 @@ fun MainScreen(
     var selectedMainTab by remember { mutableIntStateOf(1) }
     var editingCategoryId by remember { mutableStateOf<String?>(null) }
 
+    // Dialogs
     var showAddCategoryDialog by remember { mutableStateOf(false) }
     var newCategoryName by remember { mutableStateOf("") }
     var showRenameDialog by remember { mutableStateOf(false) }
     var renameValue by remember { mutableStateOf("") }
     var showIconDialog by remember { mutableStateOf(false) }
     var iconInputCustom by remember { mutableStateOf("") }
+    var showFontDialog by remember { mutableStateOf(false) }
 
     var categories by remember {
         val rawJson = prefs.getString("categories_json", null)
@@ -165,7 +167,6 @@ fun MainScreen(
         mutableStateOf(prefs.getString("sidebar_font_family", "sans-serif") ?: "sans-serif")
     }
 
-    // New icon customization settings
     var iconColorStyle by remember {
         mutableStateOf(prefs.getString("icon_color_style", "default") ?: "default")
     }
@@ -202,6 +203,26 @@ fun MainScreen(
         list.distinctBy { it.packageName }
     }
 
+    val fontOptions = listOf(
+        "sans-serif" to "Modern Sans (System Default)",
+        "sans-serif-medium" to "Medium Sans",
+        "sans-serif-black" to "Heavy Bold Black",
+        "sans-serif-light" to "Light Clean Sans",
+        "sans-serif-thin" to "Ultra Thin Sans",
+        "sans-serif-condensed" to "Condensed Clean",
+        "sans-serif-condensed-medium" to "Condensed Medium",
+        "sans-serif-condensed-light" to "Condensed Light",
+        "serif" to "Classic Elegant Serif",
+        "serif-monospace" to "Serif Monospace",
+        "monospace" to "Tech Monospace",
+        "casual" to "Casual Handwritten",
+        "cursive" to "Cursive Script"
+    )
+
+    fun getFontLabel(fontKey: String): String {
+        return fontOptions.firstOrNull { it.first == fontKey }?.second ?: "Modern Sans"
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -213,9 +234,7 @@ fun MainScreen(
                         color = Color(0xFF1E1B2E)
                     )
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.White
-                )
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
             )
         },
         bottomBar = {
@@ -655,27 +674,40 @@ fun MainScreen(
                         }
                     }
 
-                    // Sidebar Heading Font Selector
+                    // Compact Sidebar Heading Font Selector Card
                     item {
                         SettingsCard(
                             title = "Sidebar Heading Font",
                             titleColor = Color(0xFF059669),
-                            subtitle = "Select font typeface for sidebar pill labels and widget category headings."
+                            subtitle = "Choose font style for sidebar labels & widget headings."
                         ) {
-                            Column {
-                                listOf(
-                                    "sans-serif" to "Modern Sans (System Default)",
-                                    "sans-serif-condensed" to "Condensed Clean",
-                                    "monospace" to "Tech Monospace",
-                                    "serif" to "Classic Serif",
-                                    "sans-serif-black" to "Heavy Bold Black"
-                                ).forEach { (fontKey, label) ->
-                                    RadioOption(
-                                        label = label,
-                                        isSelected = sidebarFont == fontKey,
-                                        onClick = { sidebarFont = fontKey }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { showFontDialog = true }
+                                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Current Font",
+                                        fontSize = 12.sp,
+                                        color = Color(0xFF6B7280)
+                                    )
+                                    Text(
+                                        text = getFontLabel(sidebarFont),
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF1E1B2E)
                                     )
                                 }
+                                Text(
+                                    text = "Change Font →",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFF7C3AED)
+                                )
                             }
                         }
                     }
@@ -721,7 +753,6 @@ fun MainScreen(
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    // Option 3: Built-in Default, White, and Black Icons
                     item {
                         SettingsCard(
                             title = "App Icon Color Theme",
@@ -748,7 +779,6 @@ fun MainScreen(
                         }
                     }
 
-                    // Option 1: Apply Icons and Select Icon App / Icon Pack
                     item {
                         SettingsCard(
                             title = "Icon Pack (Select Icon App)",
@@ -830,7 +860,67 @@ fun MainScreen(
         }
     }
 
-    // DIALOG 1: Add Category
+    // Font Picker Dialog
+    if (showFontDialog) {
+        AlertDialog(
+            onDismissRequest = { showFontDialog = false },
+            title = { Text("Select Font Style", fontWeight = FontWeight.Bold, color = Color(0xFF1E1B2E)) },
+            text = {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 400.dp)
+                ) {
+                    items(fontOptions) { (key, label) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    sidebarFont = key
+                                    showFontDialog = false
+                                }
+                                .padding(vertical = 10.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(18.dp)
+                                    .border(
+                                        width = 2.dp,
+                                        color = if (sidebarFont == key) Color(0xFF7C3AED) else Color(0xFF9CA3AF),
+                                        shape = CircleShape
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (sidebarFont == key) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(9.dp)
+                                            .background(Color(0xFF7C3AED), CircleShape)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = label,
+                                fontSize = 14.sp,
+                                fontWeight = if (sidebarFont == key) FontWeight.Bold else FontWeight.Normal,
+                                color = if (sidebarFont == key) Color(0xFF7C3AED) else Color(0xFF1E1B2E)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showFontDialog = false }) {
+                    Text("Close", color = Color(0xFF7C3AED))
+                }
+            },
+            containerColor = Color.White
+        )
+    }
+
+    // Add Category Dialog
     if (showAddCategoryDialog) {
         AlertDialog(
             onDismissRequest = { showAddCategoryDialog = false },
@@ -878,7 +968,7 @@ fun MainScreen(
         )
     }
 
-    // DIALOG 2: Rename Category
+    // Rename Category Dialog
     if (showRenameDialog) {
         val currentCategory = categories.firstOrNull { it.id == editingCategoryId }
         AlertDialog(
@@ -919,7 +1009,7 @@ fun MainScreen(
         )
     }
 
-    // DIALOG 3: Change Icon
+    // Change Icon Dialog
     if (showIconDialog) {
         val currentCategory = categories.firstOrNull { it.id == editingCategoryId }
         val iconPresets = listOf("💼", "📱", "🎮", "🎵", "💬", "🛒", "📸", "🛠️", "🌐", "⭐", "📂", "🔥")
