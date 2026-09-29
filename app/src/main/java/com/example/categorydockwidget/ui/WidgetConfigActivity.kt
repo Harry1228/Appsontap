@@ -57,8 +57,8 @@ class WidgetConfigActivity : ComponentActivity() {
                     color = Color(0xFF111116)
                 ) {
                     MainScreen(
-                        onSave = { updatedCategories, sidebarPosition ->
-                            saveAndSync(updatedCategories, sidebarPosition, appWidgetId)
+                        onSave = { updatedCategories, sidebarPos, sidebarDisplay, sidebarSize, categorySize ->
+                            saveAndSync(updatedCategories, sidebarPos, sidebarDisplay, sidebarSize, categorySize, appWidgetId)
                         }
                     )
                 }
@@ -69,6 +69,9 @@ class WidgetConfigActivity : ComponentActivity() {
     private fun saveAndSync(
         categories: List<Category>,
         sidebarPosition: String,
+        sidebarDisplay: String,
+        sidebarSize: String,
+        categoryIconSize: String,
         appWidgetId: Int
     ) {
         AppIconHelper.prewarmIcons(this, categories)
@@ -78,6 +81,9 @@ class WidgetConfigActivity : ComponentActivity() {
         prefs.edit()
             .putString("categories_json", json)
             .putString("sidebar_position", sidebarPosition)
+            .putString("sidebar_display_type", sidebarDisplay)
+            .putString("sidebar_icon_size", sidebarSize)
+            .putString("category_icon_size", categoryIconSize)
             .apply()
 
         CategoryWidgetProvider.updateAllWidgets(this)
@@ -94,7 +100,7 @@ class WidgetConfigActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
-    onSave: (List<Category>, String) -> Unit
+    onSave: (List<Category>, String, String, String, String) -> Unit
 ) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE) }
@@ -111,7 +117,6 @@ fun MainScreen(
     var showIconDialog by remember { mutableStateOf(false) }
     var iconInputCustom by remember { mutableStateOf("") }
 
-    // Start with strictly empty categories unless user previously added them
     var categories by remember {
         val rawJson = prefs.getString("categories_json", null)
         val initial = if (rawJson != null) {
@@ -127,9 +132,18 @@ fun MainScreen(
         mutableStateOf(initial)
     }
 
-    // Sidebar position setting ("right" by default)
+    // Settings state
     var sidebarPosition by remember {
         mutableStateOf(prefs.getString("sidebar_position", "right") ?: "right")
+    }
+    var sidebarDisplayType by remember {
+        mutableStateOf(prefs.getString("sidebar_display_type", "icons") ?: "icons")
+    }
+    var sidebarIconSize by remember {
+        mutableStateOf(prefs.getString("sidebar_icon_size", "medium") ?: "medium")
+    }
+    var categoryIconSize by remember {
+        mutableStateOf(prefs.getString("category_icon_size", "medium") ?: "medium")
     }
 
     val cachedList = remember { AppRepository.getCachedApps(context) }
@@ -189,7 +203,9 @@ fun MainScreen(
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Button(
-                    onClick = { onSave(categories, sidebarPosition) },
+                    onClick = {
+                        onSave(categories, sidebarPosition, sidebarDisplayType, sidebarIconSize, categoryIconSize)
+                    },
                     modifier = Modifier.fillMaxWidth().height(50.dp),
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6))
@@ -399,7 +415,7 @@ fun MainScreen(
                         }
                     }
                 } else {
-                    // CATEGORIES LIST VIEW
+                    // CATEGORIES TOP-LEVEL VIEW
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -428,7 +444,44 @@ fun MainScreen(
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(18.dp))
+
+                        // Category Icon Size Setting in Category Tab
+                        Text(
+                            text = "Category Apps Icon Size:",
+                            color = Color.White,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf("small" to "Small", "medium" to "Medium", "large" to "Large").forEach { (key, label) ->
+                                val isSelected = categoryIconSize == key
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .background(
+                                            if (isSelected) Color(0xFF3B82F6) else Color(0xFF1B1B22),
+                                            RoundedCornerShape(10.dp)
+                                        )
+                                        .clickable { categoryIconSize = key }
+                                        .padding(vertical = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = label,
+                                        color = if (isSelected) Color.White else Color.Gray,
+                                        fontWeight = FontWeight.Medium,
+                                        fontSize = 13.sp
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(20.dp))
 
                         Text(
                             text = "Configured Categories (${categories.size}/4):",
@@ -517,7 +570,7 @@ fun MainScreen(
                 }
             }
 
-            // TAB 2: SIDEBAR POSITION (CENTERED & COLORFUL HEADING)
+            // TAB 2: SIDEBAR SETTINGS
             if (selectedMainTab == 1) {
                 Column(
                     modifier = Modifier
@@ -525,9 +578,9 @@ fun MainScreen(
                         .padding(20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
-                    // Centered, colorful rainbow gradient heading
+                    // 1. Centered Colorful Heading: Dock Position
                     Text(
                         text = "SIDEBAR DOCK POSITION",
                         modifier = Modifier.fillMaxWidth(),
@@ -547,24 +600,12 @@ fun MainScreen(
                         )
                     )
 
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                    Text(
-                        text = "Choose which side of your widget the category pills will dock on",
-                        color = Color.Gray,
-                        fontSize = 13.sp,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-
-                    Spacer(modifier = Modifier.height(28.dp))
-
-                    // Left & Right Selection Cards
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        // Left Dock Option
                         val isLeftSelected = sidebarPosition == "left"
                         Card(
                             modifier = Modifier
@@ -583,26 +624,18 @@ fun MainScreen(
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 20.dp, horizontal = 12.dp),
+                                    .padding(vertical = 16.dp, horizontal = 10.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 Text(
                                     text = "◀ Dock Left",
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 16.sp,
+                                    fontSize = 15.sp,
                                     color = if (isLeftSelected) Color(0xFF38BDF8) else Color.White
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = "Ideal for left-handed thumb reach",
-                                    color = Color.Gray,
-                                    fontSize = 11.sp,
-                                    textAlign = TextAlign.Center
                                 )
                             }
                         }
 
-                        // Right Dock Option
                         val isRightSelected = sidebarPosition == "right"
                         Card(
                             modifier = Modifier
@@ -621,21 +654,134 @@ fun MainScreen(
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 20.dp, horizontal = 12.dp),
+                                    .padding(vertical = 16.dp, horizontal = 10.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 Text(
                                     text = "Dock Right ▶",
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 16.sp,
+                                    fontSize = 15.sp,
                                     color = if (isRightSelected) Color(0xFF38BDF8) else Color.White
                                 )
-                                Spacer(modifier = Modifier.height(6.dp))
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    // 2. Sidebar Icons Size Setting (below dock position)
+                    Text(
+                        text = "SIDEBAR ICON / TEXT SIZE",
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf("small" to "Small", "medium" to "Medium", "large" to "Large").forEach { (key, label) ->
+                            val isSelected = sidebarIconSize == key
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .background(
+                                        if (isSelected) Color(0xFF3B82F6) else Color(0xFF1B1B22),
+                                        RoundedCornerShape(10.dp)
+                                    )
+                                    .clickable { sidebarIconSize = key }
+                                    .padding(vertical = 10.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
                                 Text(
-                                    text = "Ideal for right-handed thumb reach",
+                                    text = label,
+                                    color = if (isSelected) Color.White else Color.Gray,
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 13.sp
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    // 3. Setting to select Sidebar Icons vs Text Headings
+                    Text(
+                        text = "SIDEBAR PILL DISPLAY TYPE",
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        val isIcons = sidebarDisplayType == "icons"
+                        Card(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { sidebarDisplayType = "icons" }
+                                .border(
+                                    width = if (isIcons) 2.dp else 1.dp,
+                                    color = if (isIcons) Color(0xFF3B82F6) else Color(0xFF282834),
+                                    shape = RoundedCornerShape(12.dp)
+                                ),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isIcons) Color(0xFF1E2838) else Color(0xFF171720)
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 14.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "Emojis / Icons",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    color = if (isIcons) Color(0xFF38BDF8) else Color.White
+                                )
+                                Text(
+                                    text = "e.g. 💼, 🎵, 💬",
                                     color = Color.Gray,
-                                    fontSize = 11.sp,
-                                    textAlign = TextAlign.Center
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+
+                        val isText = sidebarDisplayType == "text"
+                        Card(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { sidebarDisplayType = "text" }
+                                .border(
+                                    width = if (isText) 2.dp else 1.dp,
+                                    color = if (isText) Color(0xFF3B82F6) else Color(0xFF282834),
+                                    shape = RoundedCornerShape(12.dp)
+                                ),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (isText) Color(0xFF1E2838) else Color(0xFF171720)
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 14.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "Text Headings",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    color = if (isText) Color(0xFF38BDF8) else Color.White
+                                )
+                                Text(
+                                    text = "e.g. WRK, MED, SOC",
+                                    color = Color.Gray,
+                                    fontSize = 11.sp
                                 )
                             }
                         }
@@ -845,7 +991,7 @@ fun MainScreen(
                     Text("Version 1.0.0 (High Performance)", color = Color.Gray, fontSize = 14.sp)
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        "Zero-latency native Android widget with dynamic custom categories and left/right dock switching.",
+                        "Zero-latency native Android widget with customizable sidebar docks, icon sizing, and category headings.",
                         color = Color.White,
                         fontSize = 13.sp
                     )
@@ -854,6 +1000,9 @@ fun MainScreen(
                         onClick = {
                             categories = emptyList()
                             sidebarPosition = "right"
+                            sidebarDisplayType = "icons"
+                            sidebarIconSize = "medium"
+                            categoryIconSize = "medium"
                             showSettingsDialog = false
                             Toast.makeText(context, "Reset completed. Tap Save to apply.", Toast.LENGTH_SHORT).show()
                         },

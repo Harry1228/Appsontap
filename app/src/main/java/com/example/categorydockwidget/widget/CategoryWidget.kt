@@ -6,12 +6,12 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
 import com.example.categorydockwidget.R
 import com.example.categorydockwidget.data.AppIconHelper
 import com.example.categorydockwidget.data.Category
-import com.example.categorydockwidget.data.WidgetKeys
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 
@@ -41,6 +41,9 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             val selectedId = prefs.getString("selected_category_$appWidgetId", null)
             val rawJson = prefs.getString("categories_json", null)
             val sidebarPosition = prefs.getString("sidebar_position", "right") ?: "right"
+            val sidebarDisplay = prefs.getString("sidebar_display_type", "icons") ?: "icons"
+            val sidebarIconSize = prefs.getString("sidebar_icon_size", "medium") ?: "medium"
+            val categoryIconSize = prefs.getString("category_icon_size", "medium") ?: "medium"
 
             val categories: List<Category> = if (rawJson != null) {
                 try {
@@ -53,7 +56,6 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                 emptyList()
             }
 
-            // Choose layout based on user's left/right setting
             val layoutRes = if (sidebarPosition == "left") {
                 R.layout.widget_category_dock_left
             } else {
@@ -65,9 +67,30 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             val activeCategory = categories.firstOrNull { it.id == selectedId } ?: categories.firstOrNull()
             val apps = activeCategory?.packageNames ?: emptyList()
 
-            // 1. Populate app slots
+            // 1. Heading and Divider
+            if (activeCategory != null) {
+                views.setTextViewText(R.id.widget_category_title, activeCategory.name.uppercase())
+                views.setViewVisibility(R.id.widget_category_title, View.VISIBLE)
+                views.setViewVisibility(R.id.category_title_divider, View.VISIBLE)
+            } else {
+                views.setTextViewText(R.id.widget_category_title, "APPS ON TAP")
+                views.setViewVisibility(R.id.widget_category_title, View.VISIBLE)
+                views.setViewVisibility(R.id.category_title_divider, View.VISIBLE)
+            }
+
+            // 2. Category App Icons with dynamic padding size
+            val appIconPaddingDp = when (categoryIconSize) {
+                "small" -> 10
+                "large" -> 2
+                else -> 6
+            }
+            val density = context.resources.displayMetrics.density
+            val appIconPaddingPx = (appIconPaddingDp * density).toInt()
+
             for (i in ICON_VIEW_IDS.indices) {
                 val viewId = ICON_VIEW_IDS[i]
+                views.setViewPadding(viewId, appIconPaddingPx, appIconPaddingPx, appIconPaddingPx, appIconPaddingPx)
+
                 if (i < apps.size) {
                     val pkg = apps[i]
                     val bitmap = AppIconHelper.getAppBitmap(context, pkg)
@@ -92,7 +115,13 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                 }
             }
 
-            // 2. Populate Category Dock Pills
+            // 3. Sidebar Dock Pills (Display Type + Size)
+            val sidebarTextSizeSp = when (sidebarIconSize) {
+                "small" -> 10f
+                "large" -> 17f
+                else -> 13f
+            }
+
             for (j in CAT_CONTAINER_IDS.indices) {
                 val containerId = CAT_CONTAINER_IDS[j]
                 val bgId = CAT_BG_IDS[j]
@@ -102,7 +131,14 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                     val cat = categories[j]
                     val isSelected = cat.id == activeCategory?.id
 
-                    views.setTextViewText(textId, cat.displayBadge)
+                    val displayText = if (sidebarDisplay == "text") {
+                        cat.name.take(3).uppercase()
+                    } else {
+                        cat.displayBadge
+                    }
+
+                    views.setTextViewText(textId, displayText)
+                    views.setTextViewTextSize(textId, TypedValue.COMPLEX_UNIT_SP, sidebarTextSizeSp)
                     views.setImageViewResource(
                         bgId,
                         if (isSelected) R.drawable.pill_active else R.drawable.pill_inactive
