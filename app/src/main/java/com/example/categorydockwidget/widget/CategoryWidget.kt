@@ -6,11 +6,13 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
-import android.text.SpannableString
-import android.text.Spanned
-import android.text.style.TypefaceSpan
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
@@ -30,22 +32,49 @@ class CategoryWidgetProvider : AppWidgetProvider() {
         const val EXTRA_PACKAGE_NAME = "extra_package_name"
 
         private val CAT_CONTAINER_IDS = intArrayOf(
-            R.id.cat_container_0, R.id.cat_container_1, R.id.cat_container_2, R.id.cat_container_3
+            R.id.cat_container_0, R.id.cat_container_1, R.id.cat_container_2,
+            R.id.cat_container_3, R.id.cat_container_4, R.id.cat_container_5
         )
         private val CAT_BG_IDS = intArrayOf(
-            R.id.cat_bg_0, R.id.cat_bg_1, R.id.cat_bg_2, R.id.cat_bg_3
+            R.id.cat_bg_0, R.id.cat_bg_1, R.id.cat_bg_2,
+            R.id.cat_bg_3, R.id.cat_bg_4, R.id.cat_bg_5
         )
         private val CAT_TEXT_IDS = intArrayOf(
-            R.id.cat_text_0, R.id.cat_text_1, R.id.cat_text_2, R.id.cat_text_3
+            R.id.cat_text_0, R.id.cat_text_1, R.id.cat_text_2,
+            R.id.cat_text_3, R.id.cat_text_4, R.id.cat_text_5
         )
+
+        private fun createTextBitmap(text: String, fontKey: String, textSizeSp: Float, isSelected: Boolean): Bitmap {
+            val width = 120
+            val height = 90
+            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+
+            val typeface = try {
+                Typeface.create(fontKey, Typeface.BOLD)
+            } catch (_: Exception) {
+                Typeface.DEFAULT_BOLD
+            }
+
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = if (isSelected) Color.WHITE else Color.parseColor("#D4D4D8")
+                this.typeface = typeface
+                textAlign = Paint.Align.CENTER
+                textSize = textSizeSp * 2.2f
+            }
+
+            val yPos = (height / 2f) - ((paint.descent() + paint.ascent()) / 2f)
+            canvas.drawText(text, width / 2f, yPos, paint)
+            return bitmap
+        }
 
         fun updateWidget(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int) {
             val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
             val selectedId = prefs.getString("selected_category_$appWidgetId", null)
             val rawJson = prefs.getString("categories_json", null)
-            val sidebarPosition = prefs.getString("sidebar_position", "right") ?: "right"
+            val sidebarPosition = prefs.getString("sidebar_position", "left") ?: "left"
             val sidebarAlignment = prefs.getString("sidebar_alignment", "bottom") ?: "bottom"
-            val sidebarDisplay = prefs.getString("sidebar_display_type", "heading") ?: "heading"
+            val sidebarDisplay = prefs.getString("sidebar_display_type", "icons") ?: "icons"
             val sidebarSizeSp = prefs.getInt("sidebar_icon_size_sp", 14)
             val sidebarFont = prefs.getString("sidebar_font_family", "sans-serif") ?: "sans-serif"
 
@@ -60,33 +89,24 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                 emptyList()
             }
 
-            val layoutRes = if (sidebarPosition == "left") {
-                R.layout.widget_category_dock_left
-            } else {
+            val layoutRes = if (sidebarPosition == "right") {
                 R.layout.widget_category_dock
+            } else {
+                R.layout.widget_category_dock_left
             }
 
             val views = RemoteViews(context.packageName, layoutRes)
             val activeCategory = categories.firstOrNull { it.id == selectedId } ?: categories.firstOrNull()
 
-            // 1. Heading with selected typeface
-            val titleText = if (activeCategory != null) activeCategory.name.uppercase() else "APPS WIDGET"
-            val titleSpan = SpannableString(titleText).apply {
-                setSpan(TypefaceSpan(sidebarFont), 0, titleText.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-            }
-            views.setTextViewText(R.id.widget_category_title, titleSpan)
-            views.setViewVisibility(R.id.widget_category_title, View.VISIBLE)
-            views.setViewVisibility(R.id.category_title_divider, View.VISIBLE)
-
-            // 2. Vertical Alignment of Sidebar
+            // 1. Sidebar Vertical Alignment
             val gravityValue = when (sidebarAlignment) {
                 "top" -> Gravity.TOP or Gravity.CENTER_HORIZONTAL
-                "bottom" -> Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-                else -> Gravity.CENTER
+                "center" -> Gravity.CENTER
+                else -> Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
             }
             views.setInt(R.id.sidebar_container, "setGravity", gravityValue)
 
-            // 3. Category Dock Pills
+            // 2. Category Dock Pills
             for (j in CAT_CONTAINER_IDS.indices) {
                 val containerId = CAT_CONTAINER_IDS[j]
                 val bgId = CAT_BG_IDS[j]
@@ -96,18 +116,16 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                     val cat = categories[j]
                     val isSelected = cat.id == activeCategory?.id
 
-                    val displayText = if (sidebarDisplay == "heading" || sidebarDisplay == "text") {
-                        cat.name.take(3).uppercase()
+                    if (sidebarDisplay == "heading" || sidebarDisplay == "text") {
+                        val displayText = cat.name.take(3).uppercase()
+                        val textBmp = createTextBitmap(displayText, sidebarFont, sidebarSizeSp.toFloat(), isSelected)
+                        views.setImageViewBitmap(textId, textBmp)
+                        views.setTextViewText(textId, "")
                     } else {
-                        cat.displayBadge
+                        views.setTextViewText(textId, cat.displayBadge)
+                        views.setTextViewTextSize(textId, TypedValue.COMPLEX_UNIT_SP, sidebarSizeSp.toFloat())
                     }
 
-                    val pillSpan = SpannableString(displayText).apply {
-                        setSpan(TypefaceSpan(sidebarFont), 0, displayText.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                    }
-
-                    views.setTextViewText(textId, pillSpan)
-                    views.setTextViewTextSize(textId, TypedValue.COMPLEX_UNIT_SP, sidebarSizeSp.toFloat())
                     views.setImageViewResource(
                         bgId,
                         if (isSelected) R.drawable.pill_active else R.drawable.pill_inactive
@@ -131,14 +149,13 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                 }
             }
 
-            // 4. Scrollable GridView
+            // 3. Scrollable GridView Connection
             val serviceIntent = Intent(context, AppGridWidgetService::class.java).apply {
                 putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
                 data = Uri.parse(toUri(Intent.URI_INTENT_SCHEME))
             }
             views.setRemoteAdapter(R.id.app_grid_view, serviceIntent)
 
-            // 5. Fill-in intent template
             val launchIntent = Intent(context, CategoryWidgetProvider::class.java).apply {
                 action = ACTION_LAUNCH_APP
                 putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)

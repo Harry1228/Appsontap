@@ -4,147 +4,178 @@
     android:layout_height="match_parent"
     android:background="@drawable/widget_background"
     android:orientation="horizontal"
-    android:padding="10dp">
+    android:padding="6dp">
 
-    <!-- LEFT: Category Heading + Scrollable GridView -->
-    <LinearLayout
+    <!-- LEFT: 5-Column Clean Floating App Grid -->
+    <GridView
+        android:id="@+id/app_grid_view"
         android:layout_width="0dp"
         android:layout_height="match_parent"
+        android:layout_marginEnd="4dp"
         android:layout_weight="1"
-        android:orientation="vertical">
+        android:gravity="center"
+        android:horizontalSpacing="4dp"
+        android:numColumns="5"
+        android:stretchMode="columnWidth"
+        android:verticalSpacing="4dp" />
 
-        <TextView
-            android:id="@+id/widget_category_title"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:paddingStart="4dp"
-            android:paddingEnd="4dp"
-            android:paddingBottom="4dp"
-            android:textColor="#E2E8F0"
-            android:textSize="12sp"
-            android:textStyle="bold" />
-
-        <ImageView
-            android:id="@+id/category_title_divider"
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:layout_marginBottom="4dp"
-            android:background="#22FFFFFF" />
-
-        <!-- Native Scrollable 4-Column Grid -->
-        <GridView
-            android:id="@+id/app_grid_view"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:numColumns="4"
-            android:verticalSpacing="2dp"
-            android:horizontalSpacing="2dp"
-            android:stretchMode="columnWidth"
-            android:gravity="center" />
-    </LinearLayout>
-
-    <ImageView
-        android:layout_width="1dp"
-        android:layout_height="match_parent"
-        android:layout_marginStart="8dp"
-        android:layout_marginEnd="8dp"
-        android:background="#22FFFFFF" />
-
-    <!-- RIGHT: Category Dock Pills -->
+    <!-- RIGHT: Clock + Category Pills Dock -->
     <LinearLayout
         android:id="@+id/sidebar_container"
-        android:layout_width="44dp"
+        android:layout_width="56dp"
         android:layout_height="match_parent"
-        android:gravity="center"
+        android:gravity="center_horizontal"
         android:orientation="vertical">
 
+        <!-- Top Stacked Digital Clock (04 / 36) -->
+        <LinearLayout
+            android:id="@+id/clock_container"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <TextClock
+                android:id="@+id/clock_hours"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:format12Hour="hh"
+                android:format24Hour="HH"
+                android:includeFontPadding="false"
+                android:textColor="#FFFFFF"
+                android:textSize="26sp"
+                android:textStyle="bold" />
+
+            <TextClock
+                android:id="@+id/clock_minutes"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:format12Hour="mm"
+                android:format24Hour="mm"
+                android:includeFontPadding="false"
+                android:textColor="#FFFFFF"
+                android:textSize="26sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <!-- Category Dock Pills -->
         <FrameLayout
             android:id="@+id/cat_container_0"
-            android:layout_width="38dp"
-            android:layout_height="38dp"
+            android:layout_width="44dp"
+            android:layout_height="36dp"
             android:layout_marginBottom="6dp">
-
             <ImageView
                 android:id="@+id/cat_bg_0"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:src="@drawable/pill_inactive" />
-
             <TextView
                 android:id="@+id/cat_text_0"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:gravity="center"
                 android:textColor="#FFFFFF"
-                android:textSize="13sp"
+                android:textSize="14sp"
                 android:textStyle="bold" />
         </FrameLayout>
 
         <FrameLayout
             android:id="@+id/cat_container_1"
-            android:layout_width="38dp"
-            android:layout_height="38dp"
+            android:layout_width="44dp"
+            android:layout_height="36dp"
             android:layout_marginBottom="6dp">
-
             <ImageView
                 android:id="@+id/cat_bg_1"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:src="@drawable/pill_inactive" />
-
             <TextView
                 android:id="@+id/cat_text_1"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:gravity="center"
                 android:textColor="#FFFFFF"
-                android:textSize="13sp"
+                android:textSize="14sp"
                 android:textStyle="bold" />
         </FrameLayout>
 
         <FrameLayout
             android:id="@+id/cat_container_2"
-            android:layout_width="38dp"
-            android:layout_height="38dp"
+            android:layout_width="44dp"
+            android:layout_height="36dp"
             android:layout_marginBottom="6dp">
-
             <ImageView
                 android:id="@+id/cat_bg_2"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:src="@drawable/pill_inactive" />
-
             <TextView
                 android:id="@+id/cat_text_2"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:gravity="center"
                 android:textColor="#FFFFFF"
-                android:textSize="13sp"
+                android:textSize="14sp"
                 android:textStyle="bold" />
         </FrameLayout>
 
         <FrameLayout
             android:id="@+id/cat_container_3"
-            android:layout_width="38dp"
-            android:layout_height="38dp"
-            android:visibility="gone">
-
+            android:layout_width="44dp"
+            android:layout_height="36dp"
+            android:layout_marginBottom="6dp">
             <ImageView
                 android:id="@+id/cat_bg_3"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:src="@drawable/pill_inactive" />
-
             <TextView
                 android:id="@+id/cat_text_3"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:gravity="center"
                 android:textColor="#FFFFFF"
-                android:textSize="13sp"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+        </FrameLayout>
+
+        <FrameLayout
+            android:id="@+id/cat_container_4"
+            android:layout_width="44dp"
+            android:layout_height="36dp"
+            android:layout_marginBottom="6dp">
+            <ImageView
+                android:id="@+id/cat_bg_4"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:src="@drawable/pill_inactive" />
+            <TextView
+                android:id="@+id/cat_text_4"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+        </FrameLayout>
+
+        <FrameLayout
+            android:id="@+id/cat_container_5"
+            android:layout_width="44dp"
+            android:layout_height="36dp">
+            <ImageView
+                android:id="@+id/cat_bg_5"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:src="@drawable/pill_inactive" />
+            <TextView
+                android:id="@+id/cat_text_5"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
                 android:textStyle="bold" />
         </FrameLayout>
     </LinearLayout>

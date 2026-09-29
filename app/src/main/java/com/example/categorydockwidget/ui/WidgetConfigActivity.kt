@@ -109,7 +109,6 @@ class WidgetConfigActivity : ComponentActivity() {
             val resultValue = Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
             setResult(Activity.RESULT_OK, resultValue)
         }
-        // Removed finish() to stay in the app after saving
     }
 }
 
@@ -124,7 +123,6 @@ fun MainScreen(
     var selectedMainTab by remember { mutableIntStateOf(1) }
     var editingCategoryId by remember { mutableStateOf<String?>(null) }
 
-    // Dialogs
     var showAddCategoryDialog by remember { mutableStateOf(false) }
     var newCategoryName by remember { mutableStateOf("") }
     var showRenameDialog by remember { mutableStateOf(false) }
@@ -149,13 +147,13 @@ fun MainScreen(
     }
 
     var sidebarPosition by remember {
-        mutableStateOf(prefs.getString("sidebar_position", "right") ?: "right")
+        mutableStateOf(prefs.getString("sidebar_position", "left") ?: "left")
     }
     var sidebarAlignment by remember {
         mutableStateOf(prefs.getString("sidebar_alignment", "bottom") ?: "bottom")
     }
     var sidebarDisplayType by remember {
-        mutableStateOf(prefs.getString("sidebar_display_type", "heading") ?: "heading")
+        mutableStateOf(prefs.getString("sidebar_display_type", "icons") ?: "icons")
     }
     var sidebarSizeSp by remember {
         mutableFloatStateOf(prefs.getInt("sidebar_icon_size_sp", 14).toFloat())
@@ -168,7 +166,7 @@ fun MainScreen(
     }
 
     var iconColorStyle by remember {
-        mutableStateOf(prefs.getString("icon_color_style", "default") ?: "default")
+        mutableStateOf(prefs.getString("icon_color_style", "white") ?: "white")
     }
     var selectedIconPack by remember {
         mutableStateOf(prefs.getString("selected_icon_pack", "none") ?: "none")
@@ -211,9 +209,7 @@ fun MainScreen(
         "sans-serif-thin" to "Ultra Thin Sans",
         "sans-serif-condensed" to "Condensed Clean",
         "sans-serif-condensed-medium" to "Condensed Medium",
-        "sans-serif-condensed-light" to "Condensed Light",
         "serif" to "Classic Elegant Serif",
-        "serif-monospace" to "Serif Monospace",
         "monospace" to "Tech Monospace",
         "casual" to "Casual Handwritten",
         "cursive" to "Cursive Script"
@@ -467,8 +463,8 @@ fun MainScreen(
                         item {
                             Button(
                                 onClick = {
-                                    if (categories.size >= 4) {
-                                        Toast.makeText(context, "Maximum 4 categories for widget dock", Toast.LENGTH_SHORT).show()
+                                    if (categories.size >= 6) {
+                                        Toast.makeText(context, "Maximum 6 categories for widget dock", Toast.LENGTH_SHORT).show()
                                     } else {
                                         newCategoryName = ""
                                         showAddCategoryDialog = true
@@ -515,7 +511,7 @@ fun MainScreen(
 
                         item {
                             Text(
-                                text = "Configured Categories (${categories.size}/4):",
+                                text = "Configured Categories (${categories.size}/6):",
                                 color = Color(0xFF6B7280),
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium
@@ -614,14 +610,14 @@ fun MainScreen(
                         ) {
                             Column {
                                 RadioOption(
-                                    label = "Right Side (Default)",
-                                    isSelected = sidebarPosition == "right",
-                                    onClick = { sidebarPosition = "right" }
-                                )
-                                RadioOption(
-                                    label = "Left Side",
+                                    label = "Left Side (Matching Reference)",
                                     isSelected = sidebarPosition == "left",
                                     onClick = { sidebarPosition = "left" }
+                                )
+                                RadioOption(
+                                    label = "Right Side",
+                                    isSelected = sidebarPosition == "right",
+                                    onClick = { sidebarPosition = "right" }
                                 )
                             }
                         }
@@ -635,9 +631,9 @@ fun MainScreen(
                         ) {
                             Column {
                                 RadioOption(
-                                    label = "Top",
-                                    isSelected = sidebarAlignment == "top",
-                                    onClick = { sidebarAlignment = "top" }
+                                    label = "Bottom (Matching Reference)",
+                                    isSelected = sidebarAlignment == "bottom",
+                                    onClick = { sidebarAlignment = "bottom" }
                                 )
                                 RadioOption(
                                     label = "Middle (Center)",
@@ -645,9 +641,9 @@ fun MainScreen(
                                     onClick = { sidebarAlignment = "center" }
                                 )
                                 RadioOption(
-                                    label = "Bottom",
-                                    isSelected = sidebarAlignment == "bottom",
-                                    onClick = { sidebarAlignment = "bottom" }
+                                    label = "Top",
+                                    isSelected = sidebarAlignment == "top",
+                                    onClick = { sidebarAlignment = "top" }
                                 )
                             }
                         }
@@ -657,29 +653,29 @@ fun MainScreen(
                         SettingsCard(
                             title = "Tab Display Style",
                             titleColor = Color(0xFFDB2777),
-                            subtitle = "Choose whether category tabs display heading text labels or icons."
+                            subtitle = "Choose whether category tabs display icons or short text labels."
                         ) {
                             Column {
+                                RadioOption(
+                                    label = "Icons (Emoji / Badges - Matching Reference)",
+                                    isSelected = sidebarDisplayType == "icons",
+                                    onClick = { sidebarDisplayType = "icons" }
+                                )
                                 RadioOption(
                                     label = "Heading (Text)",
                                     isSelected = sidebarDisplayType == "heading",
                                     onClick = { sidebarDisplayType = "heading" }
                                 )
-                                RadioOption(
-                                    label = "Icons (Emoji / Badge)",
-                                    isSelected = sidebarDisplayType == "icons",
-                                    onClick = { sidebarDisplayType = "icons" }
-                                )
                             }
                         }
                     }
 
-                    // Compact Sidebar Heading Font Selector Card
+                    // Compact Font Selector
                     item {
                         SettingsCard(
                             title = "Sidebar Heading Font",
                             titleColor = Color(0xFF059669),
-                            subtitle = "Choose font style for sidebar labels & widget headings."
+                            subtitle = "Select font typeface for sidebar labels and headings."
                         ) {
                             Row(
                                 modifier = Modifier
@@ -724,7 +720,7 @@ fun MainScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Text / Badge Scale", fontSize = 14.sp, color = Color(0xFF374151), fontWeight = FontWeight.Medium)
+                                    Text("Badge / Text Scale", fontSize = 14.sp, color = Color(0xFF374151), fontWeight = FontWeight.Medium)
                                     Text("${sidebarSizeSp.toInt()} sp", fontSize = 14.sp, color = Color(0xFF7C3AED), fontWeight = FontWeight.Bold)
                                 }
                                 Slider(
@@ -761,14 +757,14 @@ fun MainScreen(
                         ) {
                             Column {
                                 RadioOption(
+                                    label = "Monochrome White (Minimal - Matching Reference)",
+                                    isSelected = iconColorStyle == "white",
+                                    onClick = { iconColorStyle = "white" }
+                                )
+                                RadioOption(
                                     label = "Default (Original App Colors)",
                                     isSelected = iconColorStyle == "default",
                                     onClick = { iconColorStyle = "default" }
-                                )
-                                RadioOption(
-                                    label = "Monochrome White (Minimal)",
-                                    isSelected = iconColorStyle == "white",
-                                    onClick = { iconColorStyle = "white" }
                                 )
                                 RadioOption(
                                     label = "Monochrome Black (Stealth)",
@@ -783,11 +779,11 @@ fun MainScreen(
                         SettingsCard(
                             title = "Icon Pack (Select Icon App)",
                             titleColor = Color(0xFF7C3AED),
-                            subtitle = "Apply custom icons from installed launcher icon pack apps."
+                            subtitle = "Apply icons from installed icon pack apps (e.g. Whicons)."
                         ) {
                             Column {
                                 RadioOption(
-                                    label = "None (System Default Icons)",
+                                    label = "None (System / Filter Engine)",
                                     isSelected = selectedIconPack == "none" || selectedIconPack.isBlank(),
                                     onClick = { selectedIconPack = "none" }
                                 )
@@ -799,7 +795,7 @@ fun MainScreen(
                                             .padding(horizontal = 20.dp, vertical = 10.dp)
                                     ) {
                                         Text(
-                                            text = "No third-party icon packs detected on device. You can install packs (e.g. Whicons, Delta, Viral) from Google Play Store.",
+                                            text = "Install Whicons, Flight Lite, or Delta from Play Store for complete vector icon pack matching.",
                                             color = Color.Gray,
                                             fontSize = 12.sp,
                                             lineHeight = 16.sp
@@ -826,7 +822,7 @@ fun MainScreen(
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 Text(
-                                    text = "Zero-latency native RemoteViews engine with scrollable collections, icon theme masking, and in-memory synchronization.",
+                                    text = "Zero-latency native RemoteViews engine with scrollable 5-column collections and instant theme masking.",
                                     color = Color(0xFF4B5563),
                                     fontSize = 13.sp
                                 )
@@ -834,13 +830,13 @@ fun MainScreen(
                                 Button(
                                     onClick = {
                                         categories = emptyList()
-                                        sidebarPosition = "right"
+                                        sidebarPosition = "left"
                                         sidebarAlignment = "bottom"
-                                        sidebarDisplayType = "heading"
+                                        sidebarDisplayType = "icons"
                                         sidebarSizeSp = 14f
                                         categoryIconSizeDp = 46f
                                         sidebarFont = "sans-serif"
-                                        iconColorStyle = "default"
+                                        iconColorStyle = "white"
                                         selectedIconPack = "none"
                                         AppIconHelper.clearCache(context)
                                         Toast.makeText(context, "Reset completed. Tap Save to apply.", Toast.LENGTH_SHORT).show()
@@ -932,7 +928,7 @@ fun MainScreen(
                     OutlinedTextField(
                         value = newCategoryName,
                         onValueChange = { if (it.length <= 12) newCategoryName = it },
-                        placeholder = { Text("e.g. Games, Finance, Work") },
+                        placeholder = { Text("e.g. Home, Bank, Tools, AI") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -947,7 +943,7 @@ fun MainScreen(
                                 id = "cat_" + System.currentTimeMillis(),
                                 name = trimmed,
                                 packageNames = emptyList(),
-                                icon = "📁"
+                                icon = "★"
                             )
                             categories = categories + newCat
                             editingCategoryId = newCat.id
@@ -1012,14 +1008,14 @@ fun MainScreen(
     // Change Icon Dialog
     if (showIconDialog) {
         val currentCategory = categories.firstOrNull { it.id == editingCategoryId }
-        val iconPresets = listOf("💼", "📱", "🎮", "🎵", "💬", "🛒", "📸", "🛠️", "🌐", "⭐", "📂", "🔥")
+        val iconPresets = listOf("★", "🏛️", "🛠️", "🛍️", "➕", "📱", "🎮", "🎵", "💬", "🛒", "📸", "⚡")
 
         AlertDialog(
             onDismissRequest = { showIconDialog = false },
             title = { Text("Select Dock Icon", fontWeight = FontWeight.Bold, color = Color(0xFF1E1B2E)) },
             text = {
                 Column {
-                    Text("Tap an emoji or type a custom character/letters:", color = Color.Gray, fontSize = 13.sp)
+                    Text("Tap an icon matching the reference style[span_8](start_span)[span_8](end_span) or type custom characters:", color = Color.Gray, fontSize = 13.sp)
                     Spacer(modifier = Modifier.height(12.dp))
 
                     Row(
@@ -1077,7 +1073,7 @@ fun MainScreen(
                     OutlinedTextField(
                         value = iconInputCustom,
                         onValueChange = { if (it.length <= 2) iconInputCustom = it },
-                        placeholder = { Text("Or custom 2 letters / emoji") },
+                        placeholder = { Text("Or custom symbol / 2 letters") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )

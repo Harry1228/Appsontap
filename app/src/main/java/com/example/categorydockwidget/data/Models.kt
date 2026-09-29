@@ -16,7 +16,6 @@ import android.graphics.drawable.AdaptiveIconDrawable
 import android.graphics.drawable.Drawable
 import android.os.Build
 import android.util.LruCache
-import android.util.Xml
 import androidx.datastore.preferences.core.stringPreferencesKey
 import org.xmlpull.v1.XmlPullParser
 import java.io.File
@@ -44,7 +43,7 @@ object WidgetKeys {
 }
 
 object AppIconHelper {
-    private val iconCache = LruCache<String, Bitmap>(80)
+    private val iconCache = LruCache<String, Bitmap>(100)
     private val intentCache = HashMap<String, Intent?>()
     private var iconPackMappingCache: Pair<String, Map<String, String>>? = null
 
@@ -88,7 +87,6 @@ object AppIconHelper {
         return result.sortedBy { it.appName.lowercase() }
     }
 
-    // Parses appfilter.xml from the icon pack (assets or res/xml)
     private fun getIconPackMap(context: Context, iconPackPackage: String): Map<String, String> {
         if (iconPackMappingCache?.first == iconPackPackage) {
             return iconPackMappingCache!!.second
@@ -96,34 +94,55 @@ object AppIconHelper {
 
         val map = mutableMapOf<String, String>()
         try {
-            val packContext = context.createPackageContext(iconPackPackage, Context.CONTEXT_IGNORE_SECURITY)
-            val packRes = context.packageManager.getResourcesForApplication(iconPackPackage)
+            val pm = context.packageManager
+            val packRes = pm.getResourcesForApplication(iconPackPackage)
 
             var parser: XmlPullParser? = null
-            try {
-                val inputStream = packContext.assets.open("appfilter.xml")
-                parser = Xml.newPullParser()
-                parser.setInput(inputStream, "utf-8")
-            } catch (_: Exception) {
-                val resId = packRes.getIdentifier("appfilter", "xml", iconPackPackage)
-                if (resId != 0) {
-                    parser = packRes.getXml(resId)
-                }
+
+            // 1. Try compiled binary XML in res/xml/appfilter.xml (Standard in Whicons / CandyBar)
+            val resId = packRes.getIdentifier("appfilter", "xml", iconPackPackage)
+            if (resId != 0) {
+                parser = packRes.getXml(resId)
+            }
+
+            // 2. Fallback to assets/appfilter.xml
+            if (parser == null) {
+                try {
+                    val packContext = context.createPackageContext(iconPackPackage, Context.CONTEXT_IGNORE_SECURITY)
+                    val inputStream = packContext.assets.open("appfilter.xml")
+                    val pullParser = android.util.Xml.newPullParser()
+                    pullParser.setInput(inputStream, "utf-8")
+                    parser = pullParser
+                } catch (_: Exception) {}
             }
 
             if (parser != null) {
                 var eventType = parser.eventType
                 while (eventType != XmlPullParser.END_DOCUMENT) {
                     if (eventType == XmlPullParser.START_TAG && parser.name == "item") {
-                        val component = parser.getAttributeValue(null, "component")
-                        val drawable = parser.getAttributeValue(null, "drawable")
+                        var component: String? = null
+                        var drawable: String? = null
+
+                        for (i in 0 until parser.attributeCount) {
+                            val attrName = parser.getAttributeName(i)
+                            val attrVal = parser.getAttributeValue(i)
+                            if (attrName.equals("component", ignoreCase = true)) {
+                                component = attrVal
+                            } else if (attrName.equals("drawable", ignoreCase = true)) {
+                                drawable = attrVal
+                            }
+                        }
+
                         if (!component.isNullOrBlank() && !drawable.isNullOrBlank()) {
-                            val cleaned = component.replace("ComponentInfo{", "").replace("}", "")
-                            map[cleaned] = drawable
-                            val slashIdx = cleaned.indexOf('/')
+                            val cleanComp = component.replace("ComponentInfo{", "").replace("}", "")
+                            map[cleanComp] = drawable
+                            map[cleanComp.lowercase()] = drawable
+
+                            val slashIdx = cleanComp.indexOf('/')
                             if (slashIdx != -1) {
-                                val pkgOnly = cleaned.substring(0, slashIdx)
+                                val pkgOnly = cleanComp.substring(0, slashIdx)
                                 map.putIfAbsent(pkgOnly, drawable)
+                                map.putIfAbsent(pkgOnly.lowercase(), drawable)
                             }
                         }
                     }
@@ -145,23 +164,27 @@ object AppIconHelper {
             val comp = launchIntent?.component
 
             var drawableName: String? = null
+
             if (comp != null) {
                 val fullComp = comp.flattenToString()
                 val compInfo = "${comp.packageName}/${comp.className}"
-                drawableName = map[fullComp] ?: map[compInfo] ?: map[appPackage]
+                drawableName = map[fullComp] ?: map[fullComp.lowercase()] ?: map[compInfo] ?: map[compInfo.lowercase()]
             }
+
             if (drawableName == null) {
-                drawableName = map[appPackage]
+                drawableName = map[appPackage] ?: map[appPackage.lowercase()]
             }
+
             if (drawableName == null) {
                 drawableName = appPackage.replace('.', '_').lowercase()
             }
 
             val packRes = pm.getResourcesForApplication(iconPackPackage)
             var resId = packRes.getIdentifier(drawableName, "drawable", iconPackPackage)
+
             if (resId == 0) {
-                val fallback = appPackage.substringAfterLast('.').lowercase()
-                resId = packRes.getIdentifier(fallback, "drawable", iconPackPackage)
+                val shortName = appPackage.substringAfterLast('.').lowercase()
+                resId = packRes.getIdentifier(shortName, "drawable", iconPackPackage)
             }
 
             if (resId != 0) {
@@ -183,43 +206,45 @@ object AppIconHelper {
         val result = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(result)
 
-        // Check corner transparency
-        val c1 = Color.alpha(bitmap.getPixel(2, 2))
-        val c2 = Color.alpha(bitmap.getPixel(size - 3, 2))
-        val c3 = Color.alpha(bitmap.getPixel(2, size - 3))
-        val c4 = Color.alpha(bitmap.getPixel(size - 3, size - 3))
-        val hasTransparentCorners = (c1 < 40 && c2 < 40 && c3 < 40 && c4 < 40)
+        val pixels = IntArray(size * size)
+        bitmap.getPixels(pixels, 0, size, 0, 0, size, size)
 
-        if (hasTransparentCorners) {
-            // Cutout/glyph icon: tint non-transparent pixels directly
-            val tintColor = if (isWhite) Color.WHITE else Color.parseColor("#151518")
+        var totalAlpha = 0L
+        var opaquePixels = 0
+        var brightPixels = 0
+
+        for (p in pixels) {
+            val a = Color.alpha(p)
+            if (a > 30) {
+                totalAlpha += a
+                opaquePixels++
+                val r = Color.red(p)
+                val g = Color.green(p)
+                val b = Color.blue(p)
+                val lum = (0.299 * r + 0.587 * g + 0.114 * b).toInt()
+                if (lum > 140) brightPixels++
+            }
+        }
+
+        val isGlyph = (opaquePixels < (size * size * 0.48))
+
+        if (isGlyph) {
+            val tintColor = if (isWhite) Color.WHITE else Color.parseColor("#18181B")
             val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 colorFilter = PorterDuffColorFilter(tintColor, PorterDuff.Mode.SRC_IN)
             }
             canvas.drawBitmap(bitmap, 0f, 0f, paint)
         } else {
-            // Opaque/full-bleed icon: use high-contrast grayscale to prevent solid white blocks
             val colorMatrix = ColorMatrix()
             colorMatrix.setSaturation(0f)
-            if (isWhite) {
-                val contrast = 1.35f
-                val brightness = 40f
-                colorMatrix.postConcat(ColorMatrix(floatArrayOf(
-                    contrast, 0f, 0f, 0f, brightness,
-                    0f, contrast, 0f, 0f, brightness,
-                    0f, 0f, contrast, 0f, brightness,
-                    0f, 0f, 0f, 1f, 0f
-                )))
-            } else {
-                val contrast = 1.35f
-                val brightness = -40f
-                colorMatrix.postConcat(ColorMatrix(floatArrayOf(
-                    contrast, 0f, 0f, 0f, brightness,
-                    0f, contrast, 0f, 0f, brightness,
-                    0f, 0f, contrast, 0f, brightness,
-                    0f, 0f, 0f, 1f, 0f
-                )))
-            }
+            val contrast = 1.4f
+            val brightness = if (isWhite) 45f else -45f
+            colorMatrix.postConcat(ColorMatrix(floatArrayOf(
+                contrast, 0f, 0f, 0f, brightness,
+                0f, contrast, 0f, 0f, brightness,
+                0f, 0f, contrast, 0f, brightness,
+                0f, 0f, 0f, 1f, 0f
+            )))
             val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 colorFilter = ColorMatrixColorFilter(colorMatrix)
             }
