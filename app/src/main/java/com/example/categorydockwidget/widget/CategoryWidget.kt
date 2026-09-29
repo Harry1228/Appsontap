@@ -13,7 +13,6 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
-import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.widget.RemoteViews
@@ -39,14 +38,19 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             R.id.cat_bg_0, R.id.cat_bg_1, R.id.cat_bg_2,
             R.id.cat_bg_3, R.id.cat_bg_4, R.id.cat_bg_5
         )
-        private val CAT_TEXT_IDS = intArrayOf(
-            R.id.cat_text_0, R.id.cat_text_1, R.id.cat_text_2,
-            R.id.cat_text_3, R.id.cat_text_4, R.id.cat_text_5
+        private val CAT_ICON_IDS = intArrayOf(
+            R.id.cat_icon_0, R.id.cat_icon_1, R.id.cat_icon_2,
+            R.id.cat_icon_3, R.id.cat_icon_4, R.id.cat_icon_5
         )
 
-        private fun createTextBitmap(text: String, fontKey: String, textSizeSp: Float, isSelected: Boolean): Bitmap {
-            val width = 120
-            val height = 90
+        private fun createTextBadgeBitmap(
+            text: String,
+            fontKey: String,
+            sizeSp: Float,
+            isSelected: Boolean
+        ): Bitmap {
+            val width = 110
+            val height = 80
             val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(bitmap)
 
@@ -57,10 +61,10 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             }
 
             val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = if (isSelected) Color.WHITE else Color.parseColor("#D4D4D8")
+                color = if (isSelected) Color.WHITE else Color.parseColor("#B0B0B8")
                 this.typeface = typeface
                 textAlign = Paint.Align.CENTER
-                textSize = textSizeSp * 2.2f
+                textSize = sizeSp * 2.2f
             }
 
             val yPos = (height / 2f) - ((paint.descent() + paint.ascent()) / 2f)
@@ -69,107 +73,112 @@ class CategoryWidgetProvider : AppWidgetProvider() {
         }
 
         fun updateWidget(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int) {
-            val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
-            val selectedId = prefs.getString("selected_category_$appWidgetId", null)
-            val rawJson = prefs.getString("categories_json", null)
-            val sidebarPosition = prefs.getString("sidebar_position", "left") ?: "left"
-            val sidebarAlignment = prefs.getString("sidebar_alignment", "bottom") ?: "bottom"
-            val sidebarDisplay = prefs.getString("sidebar_display_type", "icons") ?: "icons"
-            val sidebarSizeSp = prefs.getInt("sidebar_icon_size_sp", 14)
-            val sidebarFont = prefs.getString("sidebar_font_family", "sans-serif") ?: "sans-serif"
+            try {
+                val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
+                val selectedId = prefs.getString("selected_category_$appWidgetId", null)
+                val rawJson = prefs.getString("categories_json", null)
+                val sidebarPosition = prefs.getString("sidebar_position", "left") ?: "left"
+                val sidebarAlignment = prefs.getString("sidebar_alignment", "bottom") ?: "bottom"
+                val sidebarDisplay = prefs.getString("sidebar_display_type", "icons") ?: "icons"
+                val sidebarSizeSp = prefs.getInt("sidebar_icon_size_sp", 14)
+                val sidebarFont = prefs.getString("sidebar_font_family", "sans-serif") ?: "sans-serif"
 
-            val categories: List<Category> = if (rawJson != null) {
-                try {
-                    val type = object : TypeToken<List<Category>>() {}.type
-                    Gson().fromJson(rawJson, type) ?: emptyList()
-                } catch (_: Exception) {
+                val categories: List<Category> = if (rawJson != null) {
+                    try {
+                        val type = object : TypeToken<List<Category>>() {}.type
+                        Gson().fromJson(rawJson, type) ?: emptyList()
+                    } catch (_: Exception) {
+                        emptyList()
+                    }
+                } else {
                     emptyList()
                 }
-            } else {
-                emptyList()
-            }
 
-            val layoutRes = if (sidebarPosition == "right") {
-                R.layout.widget_category_dock
-            } else {
-                R.layout.widget_category_dock_left
-            }
-
-            val views = RemoteViews(context.packageName, layoutRes)
-            val activeCategory = categories.firstOrNull { it.id == selectedId } ?: categories.firstOrNull()
-
-            // 1. Sidebar Vertical Alignment
-            val gravityValue = when (sidebarAlignment) {
-                "top" -> Gravity.TOP or Gravity.CENTER_HORIZONTAL
-                "center" -> Gravity.CENTER
-                else -> Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-            }
-            views.setInt(R.id.sidebar_container, "setGravity", gravityValue)
-
-            // 2. Category Dock Pills
-            for (j in CAT_CONTAINER_IDS.indices) {
-                val containerId = CAT_CONTAINER_IDS[j]
-                val bgId = CAT_BG_IDS[j]
-                val textId = CAT_TEXT_IDS[j]
-
-                if (j < categories.size) {
-                    val cat = categories[j]
-                    val isSelected = cat.id == activeCategory?.id
-
-                    if (sidebarDisplay == "heading" || sidebarDisplay == "text") {
-                        val displayText = cat.name.take(3).uppercase()
-                        val textBmp = createTextBitmap(displayText, sidebarFont, sidebarSizeSp.toFloat(), isSelected)
-                        views.setImageViewBitmap(textId, textBmp)
-                        views.setTextViewText(textId, "")
-                    } else {
-                        views.setTextViewText(textId, cat.displayBadge)
-                        views.setTextViewTextSize(textId, TypedValue.COMPLEX_UNIT_SP, sidebarSizeSp.toFloat())
-                    }
-
-                    views.setImageViewResource(
-                        bgId,
-                        if (isSelected) R.drawable.pill_active else R.drawable.pill_inactive
-                    )
-
-                    val switchIntent = Intent(context, CategoryWidgetProvider::class.java).apply {
-                        action = ACTION_SWITCH_CATEGORY
-                        putExtra(EXTRA_CATEGORY_ID, cat.id)
-                        putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
-                    }
-                    val pendingSwitch = PendingIntent.getBroadcast(
-                        context,
-                        appWidgetId * 10 + j,
-                        switchIntent,
-                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                    )
-                    views.setOnClickPendingIntent(containerId, pendingSwitch)
-                    views.setViewVisibility(containerId, View.VISIBLE)
+                val layoutRes = if (sidebarPosition == "right") {
+                    R.layout.widget_category_dock
                 } else {
-                    views.setViewVisibility(containerId, View.GONE)
+                    R.layout.widget_category_dock_left
                 }
-            }
 
-            // 3. Scrollable GridView Connection
-            val serviceIntent = Intent(context, AppGridWidgetService::class.java).apply {
-                putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
-                data = Uri.parse(toUri(Intent.URI_INTENT_SCHEME))
-            }
-            views.setRemoteAdapter(R.id.app_grid_view, serviceIntent)
+                val views = RemoteViews(context.packageName, layoutRes)
+                val activeCategory = categories.firstOrNull { it.id == selectedId } ?: categories.firstOrNull()
 
-            val launchIntent = Intent(context, CategoryWidgetProvider::class.java).apply {
-                action = ACTION_LAUNCH_APP
-                putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
-            }
-            val flagMutable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
-            } else {
-                PendingIntent.FLAG_UPDATE_CURRENT
-            }
-            val pendingTemplate = PendingIntent.getBroadcast(context, appWidgetId, launchIntent, flagMutable)
-            views.setPendingIntentTemplate(R.id.app_grid_view, pendingTemplate)
+                // Sidebar Alignment
+                val gravityValue = when (sidebarAlignment) {
+                    "top" -> Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                    "center" -> Gravity.CENTER
+                    else -> Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+                }
+                views.setInt(R.id.sidebar_container, "setGravity", gravityValue)
 
-            appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.app_grid_view)
-            appWidgetManager.updateAppWidget(appWidgetId, views)
+                // Category Dock Pills
+                for (j in CAT_CONTAINER_IDS.indices) {
+                    val containerId = CAT_CONTAINER_IDS[j]
+                    val bgId = CAT_BG_IDS[j]
+                    val iconId = CAT_ICON_IDS[j]
+
+                    if (j < categories.size) {
+                        val cat = categories[j]
+                        val isSelected = cat.id == activeCategory?.id
+
+                        val displayText = if (sidebarDisplay == "heading" || sidebarDisplay == "text") {
+                            cat.name.take(3).uppercase()
+                        } else {
+                            cat.displayBadge
+                        }
+
+                        val badgeBmp = createTextBadgeBitmap(
+                            displayText,
+                            sidebarFont,
+                            sidebarSizeSp.toFloat(),
+                            isSelected
+                        )
+                        views.setImageViewBitmap(iconId, badgeBmp)
+                        views.setImageViewResource(
+                            bgId,
+                            if (isSelected) R.drawable.pill_active else R.drawable.pill_inactive
+                        )
+
+                        val switchIntent = Intent(context, CategoryWidgetProvider::class.java).apply {
+                            action = ACTION_SWITCH_CATEGORY
+                            putExtra(EXTRA_CATEGORY_ID, cat.id)
+                            putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+                        }
+                        val pendingSwitch = PendingIntent.getBroadcast(
+                            context,
+                            appWidgetId * 10 + j,
+                            switchIntent,
+                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                        )
+                        views.setOnClickPendingIntent(containerId, pendingSwitch)
+                        views.setViewVisibility(containerId, View.VISIBLE)
+                    } else {
+                        views.setViewVisibility(containerId, View.GONE)
+                    }
+                }
+
+                // Scrollable GridView Connection
+                val serviceIntent = Intent(context, AppGridWidgetService::class.java).apply {
+                    putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+                    data = Uri.parse(toUri(Intent.URI_INTENT_SCHEME))
+                }
+                views.setRemoteAdapter(R.id.app_grid_view, serviceIntent)
+
+                val launchIntent = Intent(context, CategoryWidgetProvider::class.java).apply {
+                    action = ACTION_LAUNCH_APP
+                    putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+                }
+                val flagMutable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+                } else {
+                    PendingIntent.FLAG_UPDATE_CURRENT
+                }
+                val pendingTemplate = PendingIntent.getBroadcast(context, appWidgetId, launchIntent, flagMutable)
+                views.setPendingIntentTemplate(R.id.app_grid_view, pendingTemplate)
+
+                appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.app_grid_view)
+                appWidgetManager.updateAppWidget(appWidgetId, views)
+            } catch (_: Exception) {}
         }
 
         fun updateAllWidgets(context: Context) {

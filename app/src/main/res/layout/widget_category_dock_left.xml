@@ -29,7 +29,6 @@
                 android:layout_height="wrap_content"
                 android:format12Hour="hh"
                 android:format24Hour="HH"
-                android:includeFontPadding="false"
                 android:textColor="#FFFFFF"
                 android:textSize="26sp"
                 android:textStyle="bold" />
@@ -40,13 +39,12 @@
                 android:layout_height="wrap_content"
                 android:format12Hour="mm"
                 android:format24Hour="mm"
-                android:includeFontPadding="false"
                 android:textColor="#FFFFFF"
                 android:textSize="26sp"
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <!-- Up to 6 Category Dock Pills -->
+        <!-- Category Dock Pills (Using ImageView for crash-free icon & font rendering) -->
         <FrameLayout
             android:id="@+id/cat_container_0"
             android:layout_width="44dp"
@@ -57,14 +55,11 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:src="@drawable/pill_inactive" />
-            <TextView
-                android:id="@+id/cat_text_0"
+            <ImageView
+                android:id="@+id/cat_icon_0"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:gravity="center"
-                android:textColor="#FFFFFF"
-                android:textSize="14sp"
-                android:textStyle="bold" />
+                android:scaleType="centerInside" />
         </FrameLayout>
 
         <FrameLayout
@@ -77,14 +72,11 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:src="@drawable/pill_inactive" />
-            <TextView
-                android:id="@+id/cat_text_1"
+            <ImageView
+                android:id="@+id/cat_icon_1"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:gravity="center"
-                android:textColor="#FFFFFF"
-                android:textSize="14sp"
-                android:textStyle="bold" />
+                android:scaleType="centerInside" />
         </FrameLayout>
 
         <FrameLayout
@@ -97,14 +89,11 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:src="@drawable/pill_inactive" />
-            <TextView
-                android:id="@+id/cat_text_2"
+            <ImageView
+                android:id="@+id/cat_icon_2"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:gravity="center"
-                android:textColor="#FFFFFF"
-                android:textSize="14sp"
-                android:textStyle="bold" />
+                android:scaleType="centerInside" />
         </FrameLayout>
 
         <FrameLayout
@@ -117,14 +106,11 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:src="@drawable/pill_inactive" />
-            <TextView
-                android:id="@+id/cat_text_3"
+            <ImageView
+                android:id="@+id/cat_icon_3"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:gravity="center"
-                android:textColor="#FFFFFF"
-                android:textSize="14sp"
-                android:textStyle="bold" />
+                android:scaleType="centerInside" />
         </FrameLayout>
 
         <FrameLayout
@@ -137,14 +123,11 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:src="@drawable/pill_inactive" />
-            <TextView
-                android:id="@+id/cat_text_4"
+            <ImageView
+                android:id="@+id/cat_icon_4"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:gravity="center"
-                android:textColor="#FFFFFF"
-                android:textSize="14sp"
-                android:textStyle="bold" />
+                android:scaleType="centerInside" />
         </FrameLayout>
 
         <FrameLayout
@@ -156,18 +139,15 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:src="@drawable/pill_inactive" />
-            <TextView
-                android:id="@+id/cat_text_5"
+            <ImageView
+                android:id="@+id/cat_icon_5"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:gravity="center"
-                android:textColor="#FFFFFF"
-                android:textSize="14sp"
-                android:textStyle="bold" />
+                android:scaleType="centerInside" />
         </FrameLayout>
     </LinearLayout>
 
-    <!-- RIGHT: 5-Column Clean Floating App Grid -->
+    <!-- RIGHT: 5-Column Floating App Grid -->
     <GridView
         android:id="@+id/app_grid_view"
         android:layout_width="0dp"

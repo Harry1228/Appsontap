@@ -39,24 +39,28 @@ class AppGridFactory(
     }
 
     private fun loadData() {
-        val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
-        val rawJson = prefs.getString("categories_json", null)
-        val selectedId = prefs.getString("selected_category_$appWidgetId", null)
-        iconSizeDp = prefs.getInt("category_icon_size_dp", 46)
+        try {
+            val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
+            val rawJson = prefs.getString("categories_json", null)
+            val selectedId = prefs.getString("selected_category_$appWidgetId", null)
+            iconSizeDp = prefs.getInt("category_icon_size_dp", 46)
 
-        val categories: List<Category> = if (rawJson != null) {
-            try {
-                val type = object : TypeToken<List<Category>>() {}.type
-                Gson().fromJson(rawJson, type) ?: emptyList()
-            } catch (_: Exception) {
+            val categories: List<Category> = if (rawJson != null) {
+                try {
+                    val type = object : TypeToken<List<Category>>() {}.type
+                    Gson().fromJson(rawJson, type) ?: emptyList()
+                } catch (_: Exception) {
+                    emptyList()
+                }
+            } else {
                 emptyList()
             }
-        } else {
-            emptyList()
-        }
 
-        val active = categories.firstOrNull { it.id == selectedId } ?: categories.firstOrNull()
-        apps = active?.packageNames ?: emptyList()
+            val active = categories.firstOrNull { it.id == selectedId } ?: categories.firstOrNull()
+            apps = active?.packageNames ?: emptyList()
+        } catch (_: Exception) {
+            apps = emptyList()
+        }
     }
 
     override fun onDestroy() {
@@ -67,27 +71,29 @@ class AppGridFactory(
 
     override fun getViewAt(position: Int): RemoteViews? {
         if (position !in apps.indices) return null
-        val pkg = apps[position]
-        val views = RemoteViews(context.packageName, R.layout.widget_grid_item)
+        return try {
+            val pkg = apps[position]
+            val views = RemoteViews(context.packageName, R.layout.widget_grid_item)
 
-        val bitmap = AppIconHelper.getAppBitmap(context, pkg)
-        if (bitmap != null) {
-            views.setImageViewBitmap(R.id.grid_app_icon, bitmap)
+            val bitmap = AppIconHelper.getAppBitmap(context, pkg)
+            if (bitmap != null) {
+                views.setImageViewBitmap(R.id.grid_app_icon, bitmap)
+            }
+
+            val maxDimDp = 56
+            val padDp = ((maxDimDp - iconSizeDp).coerceAtLeast(0) / 2)
+            val density = context.resources.displayMetrics.density
+            val padPx = (padDp * density).toInt()
+            views.setViewPadding(R.id.grid_app_icon, padPx, padPx, padPx, padPx)
+
+            val fillInIntent = Intent().apply {
+                putExtra(CategoryWidgetProvider.EXTRA_PACKAGE_NAME, pkg)
+            }
+            views.setOnClickFillInIntent(R.id.grid_item_container, fillInIntent)
+            views
+        } catch (_: Exception) {
+            null
         }
-
-        // Apply slider size scaling via centered padding
-        val maxDimDp = 56
-        val padDp = ((maxDimDp - iconSizeDp).coerceAtLeast(0) / 2)
-        val density = context.resources.displayMetrics.density
-        val padPx = (padDp * density).toInt()
-        views.setViewPadding(R.id.grid_app_icon, padPx, padPx, padPx, padPx)
-
-        val fillInIntent = Intent().apply {
-            putExtra(CategoryWidgetProvider.EXTRA_PACKAGE_NAME, pkg)
-        }
-        views.setOnClickFillInIntent(R.id.grid_item_container, fillInIntent)
-
-        return views
     }
 
     override fun getLoadingView(): RemoteViews? = null
