@@ -8,6 +8,9 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.TypefaceSpan
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
@@ -44,6 +47,7 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             val sidebarAlignment = prefs.getString("sidebar_alignment", "bottom") ?: "bottom"
             val sidebarDisplay = prefs.getString("sidebar_display_type", "heading") ?: "heading"
             val sidebarSizeSp = prefs.getInt("sidebar_icon_size_sp", 14)
+            val sidebarFont = prefs.getString("sidebar_font_family", "sans-serif") ?: "sans-serif"
 
             val categories: List<Category> = if (rawJson != null) {
                 try {
@@ -65,9 +69,12 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             val views = RemoteViews(context.packageName, layoutRes)
             val activeCategory = categories.firstOrNull { it.id == selectedId } ?: categories.firstOrNull()
 
-            // 1. Heading and Divider
+            // 1. Heading and Divider with styled TypefaceSpan
             val titleText = if (activeCategory != null) activeCategory.name.uppercase() else "APPS WIDGET"
-            views.setTextViewText(R.id.widget_category_title, titleText)
+            val titleSpan = SpannableString(titleText).apply {
+                setSpan(TypefaceSpan(sidebarFont), 0, titleText.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            views.setTextViewText(R.id.widget_category_title, titleSpan)
             views.setViewVisibility(R.id.widget_category_title, View.VISIBLE)
             views.setViewVisibility(R.id.category_title_divider, View.VISIBLE)
 
@@ -79,7 +86,7 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             }
             views.setInt(R.id.sidebar_container, "setGravity", gravityValue)
 
-            // 3. Category Dock Pills
+            // 3. Category Dock Pills with custom font styling
             for (j in CAT_CONTAINER_IDS.indices) {
                 val containerId = CAT_CONTAINER_IDS[j]
                 val bgId = CAT_BG_IDS[j]
@@ -95,7 +102,11 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                         cat.displayBadge
                     }
 
-                    views.setTextViewText(textId, displayText)
+                    val pillSpan = SpannableString(displayText).apply {
+                        setSpan(TypefaceSpan(sidebarFont), 0, displayText.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    }
+
+                    views.setTextViewText(textId, pillSpan)
                     views.setTextViewTextSize(textId, TypedValue.COMPLEX_UNIT_SP, sidebarSizeSp.toFloat())
                     views.setImageViewResource(
                         bgId,
@@ -120,14 +131,14 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                 }
             }
 
-            // 4. Scrollable GridView connection
+            // 4. Scrollable GridView
             val serviceIntent = Intent(context, AppGridWidgetService::class.java).apply {
                 putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
                 data = Uri.parse(toUri(Intent.URI_INTENT_SCHEME))
             }
             views.setRemoteAdapter(R.id.app_grid_view, serviceIntent)
 
-            // 5. Fill-in intent template for app clicks
+            // 5. Fill-in intent template
             val launchIntent = Intent(context, CategoryWidgetProvider::class.java).apply {
                 action = ACTION_LAUNCH_APP
                 putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)

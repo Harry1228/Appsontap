@@ -60,8 +60,8 @@ class WidgetConfigActivity : ComponentActivity() {
                     color = Color(0xFFF8F7FC)
                 ) {
                     MainScreen(
-                        onSave = { updatedCategories, pos, align, display, sidebarSp, appDp ->
-                            saveAndSync(updatedCategories, pos, align, display, sidebarSp, appDp, appWidgetId)
+                        onSave = { updatedCategories, pos, align, display, sidebarSp, appDp, font, colorStyle, iconPack ->
+                            saveAndSync(updatedCategories, pos, align, display, sidebarSp, appDp, font, colorStyle, iconPack, appWidgetId)
                         }
                     )
                 }
@@ -76,21 +76,32 @@ class WidgetConfigActivity : ComponentActivity() {
         sidebarDisplay: String,
         sidebarSizeSp: Int,
         categoryIconSizeDp: Int,
+        sidebarFont: String,
+        iconColorStyle: String,
+        iconPack: String,
         appWidgetId: Int
     ) {
-        AppIconHelper.prewarmIcons(this, categories)
-
-        val json = Gson().toJson(categories)
         val prefs = getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
+        val oldStyle = prefs.getString("icon_color_style", "default")
+        val oldPack = prefs.getString("selected_icon_pack", "none")
+
+        if (oldStyle != iconColorStyle || oldPack != iconPack) {
+            AppIconHelper.clearCache(this)
+        }
+
         prefs.edit()
-            .putString("categories_json", json)
+            .putString("categories_json", Gson().toJson(categories))
             .putString("sidebar_position", sidebarPosition)
             .putString("sidebar_alignment", sidebarAlignment)
             .putString("sidebar_display_type", sidebarDisplay)
             .putInt("sidebar_icon_size_sp", sidebarSizeSp)
             .putInt("category_icon_size_dp", categoryIconSizeDp)
+            .putString("sidebar_font_family", sidebarFont)
+            .putString("icon_color_style", iconColorStyle)
+            .putString("selected_icon_pack", iconPack)
             .apply()
 
+        AppIconHelper.prewarmIcons(this, categories)
         CategoryWidgetProvider.updateAllWidgets(this)
 
         Toast.makeText(this, "Settings Applied!", Toast.LENGTH_SHORT).show()
@@ -105,7 +116,7 @@ class WidgetConfigActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
-    onSave: (List<Category>, String, String, String, Int, Int) -> Unit
+    onSave: (List<Category>, String, String, String, Int, Int, String, String, String) -> Unit
 ) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE) }
@@ -150,6 +161,20 @@ fun MainScreen(
     var categoryIconSizeDp by remember {
         mutableFloatStateOf(prefs.getInt("category_icon_size_dp", 46).toFloat())
     }
+    var sidebarFont by remember {
+        mutableStateOf(prefs.getString("sidebar_font_family", "sans-serif") ?: "sans-serif")
+    }
+
+    // New icon customization settings
+    var iconColorStyle by remember {
+        mutableStateOf(prefs.getString("icon_color_style", "default") ?: "default")
+    }
+    var selectedIconPack by remember {
+        mutableStateOf(prefs.getString("selected_icon_pack", "none") ?: "none")
+    }
+    var installedIconPacks by remember {
+        mutableStateOf<List<AppModel>>(emptyList())
+    }
 
     val cachedList = remember { AppRepository.getCachedApps(context) }
     var installedApps by remember { mutableStateOf(cachedList) }
@@ -158,8 +183,10 @@ fun MainScreen(
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
+            val packs = AppIconHelper.getInstalledIconPacks(context)
             val freshApps = AppRepository.reloadApps(context)
             withContext(Dispatchers.Main) {
+                installedIconPacks = packs
                 installedApps = freshApps
                 isLoading = false
             }
@@ -206,7 +233,10 @@ fun MainScreen(
                             sidebarAlignment,
                             sidebarDisplayType,
                             sidebarSizeSp.toInt(),
-                            categoryIconSizeDp.toInt()
+                            categoryIconSizeDp.toInt(),
+                            sidebarFont,
+                            iconColorStyle,
+                            selectedIconPack
                         )
                     },
                     modifier = Modifier.fillMaxWidth().height(52.dp),
@@ -549,7 +579,7 @@ fun MainScreen(
                 }
             }
 
-            // TAB 1: SIDE BAR (MATCHING SCREENSHOT)
+            // TAB 1: SIDE BAR
             if (selectedMainTab == 1) {
                 LazyColumn(
                     modifier = Modifier
@@ -625,6 +655,31 @@ fun MainScreen(
                         }
                     }
 
+                    // Sidebar Heading Font Selector
+                    item {
+                        SettingsCard(
+                            title = "Sidebar Heading Font",
+                            titleColor = Color(0xFF059669),
+                            subtitle = "Select font typeface for sidebar pill labels and widget category headings."
+                        ) {
+                            Column {
+                                listOf(
+                                    "sans-serif" to "Modern Sans (System Default)",
+                                    "sans-serif-condensed" to "Condensed Clean",
+                                    "monospace" to "Tech Monospace",
+                                    "serif" to "Classic Serif",
+                                    "sans-serif-black" to "Heavy Bold Black"
+                                ).forEach { (fontKey, label) ->
+                                    RadioOption(
+                                        label = label,
+                                        isSelected = sidebarFont == fontKey,
+                                        onClick = { sidebarFont = fontKey }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     item {
                         SettingsCard(
                             title = "Sidebar Item Size",
@@ -660,40 +715,116 @@ fun MainScreen(
 
             // TAB 2: GENERAL
             if (selectedMainTab == 2) {
-                Column(
+                LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(16.dp)
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    SettingsCard(
-                        title = "About Apps Widget",
-                        titleColor = Color(0xFF7C3AED),
-                        subtitle = "High-performance Nova-grade native launcher widget."
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text(
-                                text = "Zero-latency native RemoteViews engine with scrollable collections and in-memory synchronization.",
-                                color = Color(0xFF4B5563),
-                                fontSize = 13.sp
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Button(
-                                onClick = {
-                                    categories = emptyList()
-                                    sidebarPosition = "right"
-                                    sidebarAlignment = "bottom"
-                                    sidebarDisplayType = "heading"
-                                    sidebarSizeSp = 14f
-                                    categoryIconSizeDp = 46f
-                                    Toast.makeText(context, "Reset completed. Tap Save to apply.", Toast.LENGTH_SHORT).show()
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text("Clear All Data & Reset", color = Color.White)
+                    // Option 3: Built-in Default, White, and Black Icons
+                    item {
+                        SettingsCard(
+                            title = "App Icon Color Theme",
+                            titleColor = Color(0xFF2563EB),
+                            subtitle = "Switch between colorful default icons or clean minimalist monochrome icons."
+                        ) {
+                            Column {
+                                RadioOption(
+                                    label = "Default (Original App Colors)",
+                                    isSelected = iconColorStyle == "default",
+                                    onClick = { iconColorStyle = "default" }
+                                )
+                                RadioOption(
+                                    label = "Monochrome White (Minimal)",
+                                    isSelected = iconColorStyle == "white",
+                                    onClick = { iconColorStyle = "white" }
+                                )
+                                RadioOption(
+                                    label = "Monochrome Black (Stealth)",
+                                    isSelected = iconColorStyle == "black",
+                                    onClick = { iconColorStyle = "black" }
+                                )
                             }
                         }
                     }
+
+                    // Option 1: Apply Icons and Select Icon App / Icon Pack
+                    item {
+                        SettingsCard(
+                            title = "Icon Pack (Select Icon App)",
+                            titleColor = Color(0xFF7C3AED),
+                            subtitle = "Apply custom icons from installed launcher icon pack apps."
+                        ) {
+                            Column {
+                                RadioOption(
+                                    label = "None (System Default Icons)",
+                                    isSelected = selectedIconPack == "none" || selectedIconPack.isBlank(),
+                                    onClick = { selectedIconPack = "none" }
+                                )
+
+                                if (installedIconPacks.isEmpty()) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 20.dp, vertical = 10.dp)
+                                    ) {
+                                        Text(
+                                            text = "No third-party icon packs detected on device. You can install packs (e.g. Whicons, Delta, Viral) from Google Play Store.",
+                                            color = Color.Gray,
+                                            fontSize = 12.sp,
+                                            lineHeight = 16.sp
+                                        )
+                                    }
+                                } else {
+                                    installedIconPacks.forEach { pack ->
+                                        RadioOption(
+                                            label = pack.appName,
+                                            isSelected = selectedIconPack == pack.packageName,
+                                            onClick = { selectedIconPack = pack.packageName }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    item {
+                        SettingsCard(
+                            title = "About Apps Widget",
+                            titleColor = Color(0xFF6B7280),
+                            subtitle = "High-performance Nova-grade native launcher widget."
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(
+                                    text = "Zero-latency native RemoteViews engine with scrollable collections, icon theme masking, and in-memory synchronization.",
+                                    color = Color(0xFF4B5563),
+                                    fontSize = 13.sp
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Button(
+                                    onClick = {
+                                        categories = emptyList()
+                                        sidebarPosition = "right"
+                                        sidebarAlignment = "bottom"
+                                        sidebarDisplayType = "heading"
+                                        sidebarSizeSp = 14f
+                                        categoryIconSizeDp = 46f
+                                        sidebarFont = "sans-serif"
+                                        iconColorStyle = "default"
+                                        selectedIconPack = "none"
+                                        AppIconHelper.clearCache(context)
+                                        Toast.makeText(context, "Reset completed. Tap Save to apply.", Toast.LENGTH_SHORT).show()
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Text("Clear All Data & Reset", color = Color.White)
+                                }
+                            }
+                        }
+                    }
+
+                    item { Spacer(modifier = Modifier.height(16.dp)) }
                 }
             }
         }
