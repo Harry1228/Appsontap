@@ -6,16 +6,8 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.ColorMatrix
-import android.graphics.ColorMatrixColorFilter
-import android.graphics.Paint
-import android.graphics.PorterDuff
-import android.graphics.PorterDuffColorFilter
-import android.graphics.drawable.AdaptiveIconDrawable
-import android.graphics.drawable.Drawable
-import android.os.Build
 import android.util.LruCache
+import android.util.Xml
 import androidx.datastore.preferences.core.stringPreferencesKey
 import org.xmlpull.v1.XmlPullParser
 import java.io.File
@@ -30,10 +22,16 @@ data class Category(
     val id: String,
     val name: String,
     val packageNames: List<String> = emptyList(),
-    val icon: String? = "" // Holds symbol, text, or "gallery:<filename>"
+    val icon: String? = "" // Holds symbol or "gallery:<filename>"
 ) {
+    val isGallery: Boolean
+        get() = icon?.startsWith("gallery:") == true
+
+    val galleryFileName: String?
+        get() = if (isGallery) icon!!.removePrefix("gallery:") else null
+
     val displayBadge: String
-        get() = if (!icon.isNullOrBlank() && !icon.startsWith("gallery:")) icon else name.take(4).uppercase()
+        get() = if (!icon.isNullOrBlank() && !isGallery) icon else name.take(3).uppercase()
 }
 
 object WidgetKeys {
@@ -107,7 +105,7 @@ object AppIconHelper {
                 try {
                     val packContext = context.createPackageContext(iconPackPackage, Context.CONTEXT_IGNORE_SECURITY)
                     val inputStream = packContext.assets.open("appfilter.xml")
-                    val pullParser = android.util.Xml.newPullParser()
+                    val pullParser = Xml.newPullParser()
                     pullParser.setInput(inputStream, "utf-8")
                     parser = pullParser
                 } catch (_: Exception) {}
@@ -153,7 +151,7 @@ object AppIconHelper {
     }
 
     private fun getIconFromPack(context: Context, iconPackPackage: String, appPackage: String): Bitmap? {
-        if (iconPackPackage.isBlank() || iconPackPackage == "none") return null
+        if (iconPackPackage.isBlank() || iconPackPackage == "none" || iconPackPackage == "default") return null
         return try {
             val map = getIconPackMap(context, iconPackPackage)
             val pm = context.packageManager
@@ -195,49 +193,10 @@ object AppIconHelper {
         }
     }
 
-    private fun convertToMonochrome(bitmap: Bitmap, isWhite: Boolean): Bitmap {
-        val size = bitmap.width
-        val result = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(result)
-
-        val pixels = IntArray(size * size)
-        bitmap.getPixels(pixels, 0, size, 0, 0, size, size)
-
-        var opaquePixels = 0
-        for (p in pixels) {
-            if (Color.alpha(p) > 30) opaquePixels++
-        }
-
-        val isGlyph = (opaquePixels < (size * size * 0.48))
-        if (isGlyph) {
-            val tintColor = if (isWhite) Color.WHITE else Color.parseColor("#18181B")
-            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                colorFilter = PorterDuffColorFilter(tintColor, PorterDuff.Mode.SRC_IN)
-            }
-            canvas.drawBitmap(bitmap, 0f, 0f, paint)
-        } else {
-            val colorMatrix = ColorMatrix()
-            colorMatrix.setSaturation(0f)
-            val contrast = 1.4f
-            val brightness = if (isWhite) 45f else -45f
-            colorMatrix.postConcat(ColorMatrix(floatArrayOf(
-                contrast, 0f, 0f, 0f, brightness,
-                0f, contrast, 0f, 0f, brightness,
-                0f, 0f, contrast, 0f, brightness,
-                0f, 0f, 0f, 1f, 0f
-            )))
-            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                colorFilter = ColorMatrixColorFilter(colorMatrix)
-            }
-            canvas.drawBitmap(bitmap, 0f, 0f, paint)
-        }
-        return result
-    }
-
     fun getAppBitmap(context: Context, packageName: String): Bitmap? {
         val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
-        // Unified style key: "default", "white", "black", or "pack:<packPackageName>"
-        val unifiedStyle = prefs.getString("unified_icon_style", "white") ?: "white"
+        // Only "default" or "pack:<packageName>"
+        val unifiedStyle = prefs.getString("unified_icon_style", "default") ?: "default"
         val cacheKey = "${packageName}_${unifiedStyle}"
 
         iconCache.get(cacheKey)?.let { return it }
@@ -257,48 +216,22 @@ object AppIconHelper {
 
         return try {
             val size = 96
-            var baseBitmap: Bitmap? = null
+            var finalBitmap: Bitmap? = null
 
             if (unifiedStyle.startsWith("pack:")) {
                 val packPkg = unifiedStyle.removePrefix("pack:")
-                baseBitmap = getIconFromPack(context, packPkg, packageName)
+                finalBitmap = getIconFromPack(context, packPkg, packageName)
             }
 
-            if (baseBitmap == null) {
+            // Fallback to default original app icon
+            if (finalBitmap == null) {
                 val pm = context.packageManager
                 val drawable = pm.getApplicationIcon(packageName)
-
-                baseBitmap = if (unifiedStyle == "white" || unifiedStyle == "black") {
-                    var targetDrawable: Drawable? = null
-                    if (drawable is AdaptiveIconDrawable) {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            targetDrawable = drawable.monochrome
-                        }
-                        if (targetDrawable == null) {
-                            targetDrawable = drawable.foreground
-                        }
-                    } else {
-                        targetDrawable = drawable
-                    }
-
-                    val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-                    val canvas = Canvas(bmp)
-                    targetDrawable?.setBounds(0, 0, size, size)
-                    targetDrawable?.draw(canvas)
-                    bmp
-                } else {
-                    val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-                    val canvas = Canvas(bmp)
-                    drawable.setBounds(0, 0, size, size)
-                    drawable.draw(canvas)
-                    bmp
-                }
-            }
-
-            val finalBitmap = when (unifiedStyle) {
-                "white" -> convertToMonochrome(baseBitmap, isWhite = true)
-                "black" -> convertToMonochrome(baseBitmap, isWhite = false)
-                else -> baseBitmap
+                val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+                val canvas = Canvas(bmp)
+                drawable.setBounds(0, 0, size, size)
+                drawable.draw(canvas)
+                finalBitmap = bmp
             }
 
             if (!iconDir.exists()) iconDir.mkdirs()

@@ -49,36 +49,49 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             R.id.cat_icon_3, R.id.cat_icon_4, R.id.cat_icon_5
         )
 
-        // Renders complete text dynamically without chopping off at 3 letters
+        private fun resolveTypeface(fontKey: String): Typeface {
+            return try {
+                when (fontKey) {
+                    "serif" -> Typeface.create(Typeface.SERIF, Typeface.BOLD)
+                    "monospace" -> Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+                    "casual" -> Typeface.create("casual", Typeface.BOLD)
+                    "cursive" -> Typeface.create("cursive", Typeface.BOLD)
+                    "sans-serif-condensed" -> Typeface.create("sans-serif-condensed", Typeface.BOLD)
+                    else -> Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+                }
+            } catch (_: Exception) {
+                Typeface.DEFAULT_BOLD
+            }
+        }
+
+        // Renders text badges and symbols dynamically according to the sidebar size slider
         private fun createTextBadgeBitmap(
             text: String,
             fontKey: String,
             sizeSp: Float,
             isSelected: Boolean
         ): Bitmap {
-            val width = 130
-            val height = 75
+            val width = 120
+            val height = 80
             val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(bitmap)
 
-            val typeface = try {
-                Typeface.create(fontKey, Typeface.BOLD)
-            } catch (_: Exception) {
-                Typeface.DEFAULT_BOLD
-            }
-
-            // Scale text size smoothly to prevent truncation (e.g., "HOME", "BANK", "TOOLS")
-            val baseScale = when {
-                text.length <= 2 -> 2.2f
-                text.length <= 4 -> 1.75f
-                else -> 1.45f
-            }
-
             val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = if (isSelected) Color.WHITE else Color.parseColor("#B0B0B8")
-                this.typeface = typeface
-                textAlign = Paint.Align.CENTER
-                textSize = sizeSp * baseScale
+                typeface = resolveTypeface(fontKey)
+                textAlign = Paint.Align.Center
+            }
+
+            // Apply size slider directly
+            var computedSize = sizeSp * 2.1f
+            paint.textSize = computedSize
+
+            // Ensure single-line text fits neatly inside pill bounds
+            val textWidth = paint.measureText(text)
+            val maxAvailableWidth = width * 0.82f
+            if (textWidth > maxAvailableWidth && textWidth > 0f) {
+                computedSize *= (maxAvailableWidth / textWidth)
+                paint.textSize = computedSize
             }
 
             val yPos = (height / 2f) - ((paint.descent() + paint.ascent()) / 2f)
@@ -86,12 +99,26 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             return bitmap
         }
 
-        private fun getGalleryBitmap(context: Context, fileName: String): Bitmap? {
+        // Renders gallery icons scaled smoothly according to the sidebar size slider
+        private fun createGalleryIconBitmap(
+            context: Context,
+            fileName: String,
+            sizeSp: Float
+        ): Bitmap? {
             return try {
                 val file = File(context.filesDir, "category_icons/$fileName")
-                if (file.exists()) {
-                    BitmapFactory.decodeFile(file.absolutePath)
-                } else null
+                if (!file.exists()) return null
+                val source = BitmapFactory.decodeFile(file.absolutePath) ?: return null
+
+                val targetDim = (sizeSp * 3.0f).toInt().coerceIn(24, 76)
+                val output = Bitmap.createBitmap(120, 80, Bitmap.Config.ARGB_8888)
+                val canvas = Canvas(output)
+                val scaled = Bitmap.createScaledBitmap(source, targetDim, targetDim, true)
+
+                val left = (120 - targetDim) / 2f
+                val top = (80 - targetDim) / 2f
+                canvas.drawBitmap(scaled, left, top, null)
+                output
             } catch (_: Exception) {
                 null
             }
@@ -133,7 +160,7 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                 val views = RemoteViews(context.packageName, layoutRes)
                 val activeCategory = categories.firstOrNull { it.id == selectedId } ?: categories.firstOrNull()
 
-                // 1. Clock Configuration (Visibility, Font, Size)
+                // 1. Clock Configuration
                 if (clockEnabled) {
                     views.setViewVisibility(R.id.clock_container, View.VISIBLE)
                     views.setTextViewTextSize(R.id.clock_hours, TypedValue.COMPLEX_UNIT_SP, clockSizeSp.toFloat())
@@ -173,19 +200,17 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                         val cat = categories[j]
                         val isSelected = cat.id == activeCategory?.id
 
-                        if (cat.icon?.startsWith("gallery:") == true) {
-                            val fileName = cat.icon.removePrefix("gallery:")
-                            val galleryBmp = getGalleryBitmap(context, fileName)
+                        if (cat.isGallery && cat.galleryFileName != null) {
+                            val galleryBmp = createGalleryIconBitmap(context, cat.galleryFileName!!, sidebarSizeSp.toFloat())
                             if (galleryBmp != null) {
                                 views.setImageViewBitmap(iconId, galleryBmp)
                             } else {
-                                val fallbackBmp = createTextBadgeBitmap(cat.name.take(4).uppercase(), sidebarFont, sidebarSizeSp.toFloat(), isSelected)
+                                val fallbackBmp = createTextBadgeBitmap(cat.name.take(3).uppercase(), sidebarFont, sidebarSizeSp.toFloat(), isSelected)
                                 views.setImageViewBitmap(iconId, fallbackBmp)
                             }
                         } else {
                             val displayText = if (sidebarDisplay == "heading" || sidebarDisplay == "text") {
-                                // Full text up to 5 chars (e.g., "HOME", "BANK", "TOOLS") without truncation
-                                cat.name.take(5).uppercase()
+                                cat.name.take(4).uppercase()
                             } else {
                                 cat.displayBadge
                             }

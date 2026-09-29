@@ -14,6 +14,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -26,10 +27,16 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.categorydockwidget.data.AppIconHelper
@@ -91,7 +98,7 @@ class WidgetConfigActivity : ComponentActivity() {
         appWidgetId: Int
     ) {
         val prefs = getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
-        val oldStyle = prefs.getString("unified_icon_style", "white")
+        val oldStyle = prefs.getString("unified_icon_style", "default")
 
         if (oldStyle != unifiedIconStyle) {
             AppIconHelper.clearCache(this)
@@ -122,6 +129,44 @@ class WidgetConfigActivity : ComponentActivity() {
     }
 }
 
+@Composable
+fun CategoryBadgeView(category: Category, size: Dp, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val galleryBitmap = remember(category.icon) {
+        if (category.isGallery && category.galleryFileName != null) {
+            val file = File(context.filesDir, "category_icons/${category.galleryFileName}")
+            if (file.exists()) BitmapFactory.decodeFile(file.absolutePath)?.asImageBitmap() else null
+        } else null
+    }
+
+    Box(
+        modifier = modifier
+            .size(size)
+            .background(Color(0xFFF3E8FF), CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        if (galleryBitmap != null) {
+            Image(
+                bitmap = galleryBitmap,
+                contentDescription = category.name,
+                modifier = Modifier
+                    .size(size * 0.68f)
+                    .clip(CircleShape),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            Text(
+                text = category.displayBadge,
+                fontSize = if (category.displayBadge.length > 2) (size.value * 0.28f).sp else (size.value * 0.40f).sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF7C3AED),
+                maxLines = 1,
+                softWrap = false
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
@@ -138,7 +183,6 @@ fun MainScreen(
     var showRenameDialog by remember { mutableStateOf(false) }
     var renameValue by remember { mutableStateOf("") }
     var showIconDialog by remember { mutableStateOf(false) }
-    var iconInputCustom by remember { mutableStateOf("") }
     var showFontDialog by remember { mutableStateOf(false) }
     var showClockFontDialog by remember { mutableStateOf(false) }
 
@@ -176,15 +220,16 @@ fun MainScreen(
         mutableStateOf(prefs.getString("sidebar_font_family", "sans-serif") ?: "sans-serif")
     }
 
-    // Unified Icon Style (Default, White, Black, or "pack:<pack_package>")
+    // Only default or icon pack
     var unifiedIconStyle by remember {
-        mutableStateOf(prefs.getString("unified_icon_style", "white") ?: "white")
+        val saved = prefs.getString("unified_icon_style", "default") ?: "default"
+        mutableStateOf(if (saved == "white" || saved == "black") "default" else saved)
     }
     var installedIconPacks by remember {
         mutableStateOf<List<AppModel>>(emptyList())
     }
 
-    // Clock state
+    // Clock preferences
     var clockEnabled by remember {
         mutableStateOf(prefs.getBoolean("clock_enabled", true))
     }
@@ -221,7 +266,7 @@ fun MainScreen(
         list.distinctBy { it.packageName }
     }
 
-    // Activity Result Launcher for Custom Gallery Category Icon
+    // Gallery Picker Contract with square center cropping
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -234,7 +279,10 @@ fun MainScreen(
                     if (!iconDir.exists()) iconDir.mkdirs()
                     val fileName = "cat_${editingCategoryId}_${System.currentTimeMillis()}.png"
                     val file = File(iconDir, fileName)
-                    val scaled = Bitmap.createScaledBitmap(rawBitmap, 96, 96, true)
+
+                    val minDim = minOf(rawBitmap.width, rawBitmap.height)
+                    val squareBitmap = Bitmap.createBitmap(rawBitmap, (rawBitmap.width - minDim) / 2, (rawBitmap.height - minDim) / 2, minDim, minDim)
+                    val scaled = Bitmap.createScaledBitmap(squareBitmap, 128, 128, true)
                     FileOutputStream(file).use { out ->
                         scaled.compress(Bitmap.CompressFormat.PNG, 100, out)
                     }
@@ -243,26 +291,22 @@ fun MainScreen(
                         if (it.id == editingCategoryId) it.copy(icon = "gallery:$fileName") else it
                     }
                     showIconDialog = false
-                    Toast.makeText(context, "Gallery Icon Selected!", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Gallery Icon Applied!", Toast.LENGTH_SHORT).show()
                 }
             } catch (_: Exception) {
-                Toast.makeText(context, "Could not load image", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Failed to load image", Toast.LENGTH_SHORT).show()
             }
         }
     }
 
+    // 6 visually distinctive, expressive typefaces
     val fontOptions = listOf(
-        "sans-serif" to "Modern Sans (System Default)",
-        "sans-serif-medium" to "Medium Sans",
-        "sans-serif-black" to "Heavy Bold Black",
-        "sans-serif-light" to "Light Clean Sans",
-        "sans-serif-thin" to "Ultra Thin Sans",
-        "sans-serif-condensed" to "Condensed Clean",
-        "sans-serif-condensed-medium" to "Condensed Medium",
-        "serif" to "Classic Elegant Serif",
-        "monospace" to "Tech Monospace",
-        "casual" to "Casual Handwritten",
-        "cursive" to "Cursive Script"
+        "sans-serif" to "Modern Sans (Clean Geometric)",
+        "serif" to "Classic Serif (Literary & Editorial)",
+        "monospace" to "Tech Monospace (Cyber & Terminal)",
+        "casual" to "Casual Script (Hand-Drawn & Friendly)",
+        "cursive" to "Cursive Handwriting (Calligraphy Style)",
+        "sans-serif-condensed" to "Ultra Condensed (Tall & Compact)"
     )
 
     fun getFontLabel(fontKey: String): String {
@@ -384,23 +428,12 @@ fun MainScreen(
                                     .padding(16.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(54.dp)
-                                        .background(Color(0xFFF3E8FF), CircleShape)
-                                        .clickable {
-                                            iconInputCustom = ""
-                                            showIconDialog = true
-                                        },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = currentCategory.displayBadge,
-                                        fontSize = 20.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF7C3AED)
-                                    )
-                                }
+                                // Dedicated Badge View that renders gallery image or single-line text
+                                CategoryBadgeView(
+                                    category = currentCategory,
+                                    size = 54.dp,
+                                    modifier = Modifier.clickable { showIconDialog = true }
+                                )
 
                                 Spacer(modifier = Modifier.width(16.dp))
 
@@ -431,10 +464,7 @@ fun MainScreen(
                                             color = Color(0xFF7C3AED),
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.SemiBold,
-                                            modifier = Modifier.clickable {
-                                                iconInputCustom = ""
-                                                showIconDialog = true
-                                            }
+                                            modifier = Modifier.clickable { showIconDialog = true }
                                         )
                                         Text("•", color = Color.Gray, fontSize = 12.sp)
                                         Text(
@@ -602,19 +632,7 @@ fun MainScreen(
                                             .padding(16.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(46.dp)
-                                                .background(Color(0xFFF3E8FF), CircleShape),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = cat.displayBadge,
-                                                fontSize = 18.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color(0xFF7C3AED)
-                                            )
-                                        }
+                                        CategoryBadgeView(category = cat, size = 46.dp)
 
                                         Spacer(modifier = Modifier.width(14.dp))
 
@@ -626,7 +644,7 @@ fun MainScreen(
                                                 fontWeight = FontWeight.Bold
                                             )
                                             Text(
-                                                text = "${cat.packageNames.size} apps configured (scrollable)",
+                                                text = "${cat.packageNames.size} apps configured",
                                                 color = Color(0xFF6B7280),
                                                 fontSize = 12.sp
                                             )
@@ -654,7 +672,6 @@ fun MainScreen(
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    // 1. Sidebar Placement
                     item {
                         SettingsCard(
                             title = "Sidebar Placement",
@@ -676,7 +693,6 @@ fun MainScreen(
                         }
                     }
 
-                    // 2. Sidebar Clock Controls
                     item {
                         SettingsCard(
                             title = "Sidebar Clock",
@@ -736,7 +752,6 @@ fun MainScreen(
                         }
                     }
 
-                    // 3. Vertical Alignment
                     item {
                         SettingsCard(
                             title = "Vertical Alignment",
@@ -763,7 +778,6 @@ fun MainScreen(
                         }
                     }
 
-                    // 4. Tab Display Style
                     item {
                         SettingsCard(
                             title = "Tab Display Style",
@@ -785,7 +799,6 @@ fun MainScreen(
                         }
                     }
 
-                    // 5. Sidebar Heading Font
                     item {
                         SettingsCard(
                             title = "Sidebar Heading Font",
@@ -823,12 +836,11 @@ fun MainScreen(
                         }
                     }
 
-                    // 6. Sidebar Item Size
                     item {
                         SettingsCard(
                             title = "Sidebar Item Size",
                             titleColor = Color(0xFF7C3AED),
-                            subtitle = "Control text label size and badge scale on the sidebar dock."
+                            subtitle = "Control text label size, symbol size, and gallery icon scale on the sidebar dock."
                         ) {
                             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                                 Row(
@@ -836,7 +848,7 @@ fun MainScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Badge / Text Scale", fontSize = 14.sp, color = Color(0xFF374151), fontWeight = FontWeight.Medium)
+                                    Text("Badge / Text / Icon Scale", fontSize = 14.sp, color = Color(0xFF374151), fontWeight = FontWeight.Medium)
                                     Text("${sidebarSizeSp.toInt()} sp", fontSize = 14.sp, color = Color(0xFF7C3AED), fontWeight = FontWeight.Bold)
                                 }
                                 Slider(
@@ -857,7 +869,7 @@ fun MainScreen(
                 }
             }
 
-            // TAB 2: GENERAL (Unified App Icon Style & Icon Pack in One)
+            // TAB 2: GENERAL (Only Default & Icon Pack)
             if (selectedMainTab == 2) {
                 LazyColumn(
                     modifier = Modifier
@@ -869,30 +881,20 @@ fun MainScreen(
                         SettingsCard(
                             title = "App Icon Style & Pack",
                             titleColor = Color(0xFF2563EB),
-                            subtitle = "Choose one icon appearance for all apps in the widget."
+                            subtitle = "Select whether to use default system app icons or an installed third-party icon pack."
                         ) {
                             Column {
                                 RadioOption(
-                                    label = "Monochrome White (Minimal)",
-                                    isSelected = unifiedIconStyle == "white",
-                                    onClick = { unifiedIconStyle = "white" }
-                                )
-                                RadioOption(
-                                    label = "Default (Original Colors)",
+                                    label = "Default (Original System Colors)",
                                     isSelected = unifiedIconStyle == "default",
                                     onClick = { unifiedIconStyle = "default" }
-                                )
-                                RadioOption(
-                                    label = "Monochrome Black (Stealth)",
-                                    isSelected = unifiedIconStyle == "black",
-                                    onClick = { unifiedIconStyle = "black" }
                                 )
 
                                 if (installedIconPacks.isNotEmpty()) {
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(horizontal = 20.dp, vertical = 6.dp)
+                                            .padding(horizontal = 20.dp, vertical = 8.dp)
                                     ) {
                                         Text(
                                             text = "Installed Icon Packs:",
@@ -910,6 +912,19 @@ fun MainScreen(
                                             onClick = { unifiedIconStyle = packVal }
                                         )
                                     }
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 20.dp, vertical = 10.dp)
+                                    ) {
+                                        Text(
+                                            text = "No icon pack apps detected on your device. You can install Whicons, Flight Lite, or Delta from the Play Store.",
+                                            color = Color.Gray,
+                                            fontSize = 12.sp,
+                                            lineHeight = 16.sp
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -923,7 +938,7 @@ fun MainScreen(
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 Text(
-                                    text = "Zero-latency native RemoteViews engine with scrollable 5-column collections and instant theme masking.",
+                                    text = "Zero-latency native RemoteViews engine with dynamic font rendering, scrollable collections, and gallery icon integration.",
                                     color = Color(0xFF4B5563),
                                     fontSize = 13.sp
                                 )
@@ -937,7 +952,7 @@ fun MainScreen(
                                         sidebarSizeSp = 14f
                                         categoryIconSizeDp = 46f
                                         sidebarFont = "sans-serif"
-                                        unifiedIconStyle = "white"
+                                        unifiedIconStyle = "default"
                                         clockEnabled = true
                                         clockFont = "sans-serif"
                                         clockSizeSp = 26f
@@ -959,7 +974,7 @@ fun MainScreen(
         }
     }
 
-    // Sidebar Font Picker Dialog
+    // Sidebar Font Dialog
     if (showFontDialog) {
         AlertDialog(
             onDismissRequest = { showFontDialog = false },
@@ -976,7 +991,7 @@ fun MainScreen(
                                     sidebarFont = key
                                     showFontDialog = false
                                 }
-                                .padding(vertical = 10.dp, horizontal = 4.dp),
+                                .padding(vertical = 12.dp, horizontal = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Box(
@@ -1013,7 +1028,7 @@ fun MainScreen(
         )
     }
 
-    // Clock Font Picker Dialog
+    // Clock Font Dialog
     if (showClockFontDialog) {
         AlertDialog(
             onDismissRequest = { showClockFontDialog = false },
@@ -1030,7 +1045,7 @@ fun MainScreen(
                                     clockFont = key
                                     showClockFontDialog = false
                                 }
-                                .padding(vertical = 10.dp, horizontal = 4.dp),
+                                .padding(vertical = 12.dp, horizontal = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Box(
@@ -1156,28 +1171,19 @@ fun MainScreen(
         )
     }
 
-    // Change Category Icon Dialog (Black & White Curated Categories + Gallery Picker)
+    // Category Icon Dialog (Gallery Picker + Curated Symbols, no bottom letter input box)
     if (showIconDialog) {
         val currentCategory = categories.firstOrNull { it.id == editingCategoryId }
 
         val bAndWIcons = listOf(
-            // General & Star
             "★", "☆", "🏠", "📁", "⚡", "🔍", "⚙️", "⏱️",
-            // Banking & Finance
             "🏛️", "💳", "💰", "📈", "🏦", "💵",
-            // AI & Technology
             "🤖", "🧠", "💻", "🔬", "📡", "🌐",
-            // Tools & Utility
             "🛠️", "🔧", "🔨", "📱", "🔋", "🔑",
-            // Travel & Navigation
             "✈️", "🧭", "🚗", "🚆", "📍", "🗺️",
-            // Movies & Media
             "🎬", "🍿", "📺", "🎵", "🎧", "📷",
-            // Games
             "🎮", "🕹️", "🎲", "👾", "🎯", "🏆",
-            // Social & Chat
             "💬", "✉️", "📞", "👥", "🔔", "📣",
-            // Shopping & Food
             "🛍️", "🛒", "🏷️", "☕", "🍕", "🍔"
         )
 
@@ -1189,7 +1195,7 @@ fun MainScreen(
                     // Upload from Gallery Button
                     Button(
                         onClick = { galleryLauncher.launch("image/*") },
-                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
                     ) {
@@ -1197,13 +1203,13 @@ fun MainScreen(
                     }
 
                     Spacer(modifier = Modifier.height(14.dp))
-                    Text("Or choose a curated symbol:", color = Color.Gray, fontSize = 12.sp)
+                    Text("Or select a symbol:", color = Color.Gray, fontSize = 12.sp)
                     Spacer(modifier = Modifier.height(8.dp))
 
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 240.dp)
+                            .heightIn(max = 280.dp)
                     ) {
                         items(bAndWIcons.chunked(6)) { rowIcons ->
                             Row(
@@ -1231,34 +1237,9 @@ fun MainScreen(
                             }
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-                    OutlinedTextField(
-                        value = iconInputCustom,
-                        onValueChange = { if (it.length <= 4) iconInputCustom = it },
-                        placeholder = { Text("Or custom 2-4 letters (e.g. AI, TV)") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
                 }
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        val trimmed = iconInputCustom.trim()
-                        if (trimmed.isNotEmpty() && currentCategory != null) {
-                            categories = categories.map {
-                                if (it.id == currentCategory.id) it.copy(icon = trimmed) else it
-                            }
-                        }
-                        showIconDialog = false
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C3AED))
-                ) {
-                    Text("Apply", color = Color.White)
-                }
-            },
-            dismissButton = {
                 TextButton(onClick = { showIconDialog = false }) {
                     Text("Cancel", color = Color.Gray)
                 }
