@@ -78,6 +78,19 @@ data class WidgetFullBackup(
     val animationStyle: String = "fade"
 )
 
+// Theme Colors container for clean Light/Dark switching
+data class ConfigThemePalette(
+    val isDark: Boolean,
+    val background: Color,
+    val surface: Color,
+    val cardBorder: Color,
+    val primary: Color,
+    val textPrimary: Color,
+    val textSecondary: Color,
+    val divider: Color,
+    val inputBackground: Color
+)
+
 class WidgetConfigActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -89,18 +102,48 @@ class WidgetConfigActivity : ComponentActivity() {
         ) ?: AppWidgetManager.INVALID_APPWIDGET_ID
 
         setContent {
-            MaterialTheme(
-                colorScheme = lightColorScheme(
-                    primary = Color(0xFF7C3AED),
-                    background = Color(0xFFF8F7FC),
-                    surface = Color.White
+            val prefs = remember { getSharedPreferences("widget_prefs", Context.MODE_PRIVATE) }
+            var isDarkTheme by remember { mutableStateOf(prefs.getBoolean("app_theme_dark", false)) }
+
+            val theme = if (isDarkTheme) {
+                ConfigThemePalette(
+                    isDark = true,
+                    background = Color(0xFF111116),
+                    surface = Color(0xFF1B1B22),
+                    cardBorder = Color(0xFF282834),
+                    primary = Color(0xFFA78BFA),
+                    textPrimary = Color(0xFFF3F4F6),
+                    textSecondary = Color(0xFF9CA3AF),
+                    divider = Color(0xFF242430),
+                    inputBackground = Color(0xFF181820)
                 )
+            } else {
+                ConfigThemePalette(
+                    isDark = false,
+                    background = Color(0xFFF8F7FC),
+                    surface = Color.White,
+                    cardBorder = Color(0xFFEDE9FE),
+                    primary = Color(0xFF7C3AED),
+                    textPrimary = Color(0xFF1E1B2E),
+                    textSecondary = Color(0xFF6B7280),
+                    divider = Color(0xFFF3E8FF),
+                    inputBackground = Color.White
+                )
+            }
+
+            MaterialTheme(
+                colorScheme = if (isDarkTheme) darkColorScheme(primary = theme.primary) else lightColorScheme(primary = theme.primary)
             ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = Color(0xFFF8F7FC)
+                    color = theme.background
                 ) {
                     MainScreen(
+                        theme = theme,
+                        onToggleTheme = { dark ->
+                            isDarkTheme = dark
+                            prefs.edit().putBoolean("app_theme_dark", dark).apply()
+                        },
                         onSave = { updatedCategories, pos, align, display, sidebarSp, appDp, font, unifiedStyle, clockEnabled, clockFont, clockSize, animStyle ->
                             saveAndSync(updatedCategories, pos, align, display, sidebarSp, appDp, font, unifiedStyle, clockEnabled, clockFont, clockSize, animStyle, appWidgetId)
                         }
@@ -159,7 +202,7 @@ class WidgetConfigActivity : ComponentActivity() {
 }
 
 @Composable
-fun CategoryBadgeView(category: Category, size: Dp, modifier: Modifier = Modifier) {
+fun CategoryBadgeView(category: Category, size: Dp, theme: ConfigThemePalette, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val galleryBitmap = remember(category.icon) {
         if (category.isGallery && category.galleryFileName != null) {
@@ -171,7 +214,7 @@ fun CategoryBadgeView(category: Category, size: Dp, modifier: Modifier = Modifie
     Box(
         modifier = modifier
             .size(size)
-            .background(Color(0xFFF3E8FF), CircleShape),
+            .background(if (theme.isDark) Color(0xFF282834) else Color(0xFFF3E8FF), CircleShape),
         contentAlignment = Alignment.Center
     ) {
         if (galleryBitmap != null) {
@@ -188,7 +231,7 @@ fun CategoryBadgeView(category: Category, size: Dp, modifier: Modifier = Modifie
                 text = category.displayBadge,
                 fontSize = if (category.displayBadge.length > 2) (size.value * 0.28f).sp else (size.value * 0.40f).sp,
                 fontWeight = FontWeight.Bold,
-                color = Color(0xFF7C3AED),
+                color = theme.primary,
                 maxLines = 1,
                 softWrap = false
             )
@@ -199,6 +242,8 @@ fun CategoryBadgeView(category: Category, size: Dp, modifier: Modifier = Modifie
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
+    theme: ConfigThemePalette,
+    onToggleTheme: (Boolean) -> Unit,
     onSave: (List<Category>, String, String, String, Int, Int, String, String, Boolean, String, Int, String) -> Unit
 ) {
     val context = LocalContext.current
@@ -207,6 +252,7 @@ fun MainScreen(
     var selectedMainTab by remember { mutableIntStateOf(0) }
     var editingCategoryId by remember { mutableStateOf<String?>(null) }
 
+    // Dialog States
     var showSettingsDialog by remember { mutableStateOf(false) }
     var showResetConfirmDialog by remember { mutableStateOf(false) }
     var showAddCategoryDialog by remember { mutableStateOf(false) }
@@ -217,6 +263,7 @@ fun MainScreen(
     var showFontDialog by remember { mutableStateOf(false) }
     var showClockFontDialog by remember { mutableStateOf(false) }
 
+    // App-specific icon customization state
     var editingAppForIcon by remember { mutableStateOf<AppModel?>(null) }
     var iconUpdateCounter by remember { mutableIntStateOf(0) }
 
@@ -298,6 +345,7 @@ fun MainScreen(
         currentCategory?.packageNames?.toSet() ?: emptySet()
     }
 
+    // Filter & Sort: Selected apps floated to the top
     val filteredApps = remember(searchQuery, installedApps, selectedSet) {
         val query = searchQuery.trim().lowercase()
         val list = if (query.isBlank()) {
@@ -412,6 +460,7 @@ fun MainScreen(
         }
     }
 
+    // Backup Export
     val exportBackupLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
     ) { uri: Uri? ->
@@ -460,6 +509,7 @@ fun MainScreen(
         }
     }
 
+    // Backup Restore
     val importBackupLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
@@ -577,6 +627,8 @@ fun MainScreen(
         return fontOptions.firstOrNull { it.first == fontKey }?.second ?: "Modern Sans"
     }
 
+    val tabTitles = listOf("Categories", "Side Bar", "Animation", "Icons", "Backup")
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -585,25 +637,25 @@ fun MainScreen(
                         text = "Apps Widget",
                         fontWeight = FontWeight.Bold,
                         fontSize = 22.sp,
-                        color = Color(0xFF1E1B2E)
+                        color = theme.textPrimary
                     )
                 },
                 actions = {
                     IconButton(onClick = { showSettingsDialog = true }) {
                         Icon(
                             painter = painterResource(id = R.drawable.ic_settings),
-                            contentDescription = "Settings & Backup",
-                            tint = Color(0xFF7C3AED),
+                            contentDescription = "Settings",
+                            tint = theme.primary,
                             modifier = Modifier.size(24.dp)
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = theme.surface)
             )
         },
         bottomBar = {
             Surface(
-                color = Color.White,
+                color = theme.surface,
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
                 shape = RoundedCornerShape(16.dp),
                 shadowElevation = 6.dp
@@ -627,25 +679,27 @@ fun MainScreen(
                     },
                     modifier = Modifier.fillMaxWidth().height(52.dp),
                     shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C3AED))
+                    colors = ButtonDefaults.buttonColors(containerColor = theme.primary)
                 ) {
                     Text("Save & Apply Changes", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 }
             }
         },
-        containerColor = Color(0xFFF8F7FC)
+        containerColor = theme.background
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            TabRow(
+            // Scrollable TabRow containing the 5 ordered tabs
+            ScrollableTabRow(
                 selectedTabIndex = selectedMainTab,
-                containerColor = Color.White,
-                contentColor = Color(0xFF7C3AED)
+                containerColor = theme.surface,
+                contentColor = theme.primary,
+                edgePadding = 12.dp
             ) {
-                listOf("Categories", "Side Bar", "General").forEachIndexed { index, title ->
+                tabTitles.forEachIndexed { index, title ->
                     Tab(
                         selected = selectedMainTab == index,
                         onClick = {
@@ -656,8 +710,8 @@ fun MainScreen(
                             Text(
                                 text = title,
                                 fontWeight = if (selectedMainTab == index) FontWeight.Bold else FontWeight.Normal,
-                                fontSize = 15.sp,
-                                color = if (selectedMainTab == index) Color(0xFF7C3AED) else Color(0xFF6B7280)
+                                fontSize = 14.sp,
+                                color = if (selectedMainTab == index) theme.primary else theme.textSecondary
                             )
                         }
                     )
@@ -671,17 +725,17 @@ fun MainScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(Color.White)
+                                .background(theme.surface)
                                 .padding(horizontal = 16.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             TextButton(onClick = { editingCategoryId = null }) {
-                                Text("← Back", color = Color(0xFF7C3AED), fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                Text("← Back", color = theme.primary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                             }
                             Spacer(modifier = Modifier.weight(1f))
                             Text(
                                 text = "${currentCategory.packageNames.size} apps selected",
-                                color = Color(0xFF6B7280),
+                                color = theme.textSecondary,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium
                             )
@@ -691,9 +745,9 @@ fun MainScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            colors = CardDefaults.cardColors(containerColor = theme.surface),
                             shape = RoundedCornerShape(20.dp),
-                            border = BorderStroke(1.dp, Color(0xFFEDE9FE))
+                            border = BorderStroke(1.dp, theme.cardBorder)
                         ) {
                             Row(
                                 modifier = Modifier
@@ -704,6 +758,7 @@ fun MainScreen(
                                 CategoryBadgeView(
                                     category = currentCategory,
                                     size = 54.dp,
+                                    theme = theme,
                                     modifier = Modifier.clickable { showIconDialog = true }
                                 )
 
@@ -712,7 +767,7 @@ fun MainScreen(
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = currentCategory.name,
-                                        color = Color(0xFF1E1B2E),
+                                        color = theme.textPrimary,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 18.sp
                                     )
@@ -722,7 +777,7 @@ fun MainScreen(
                                     ) {
                                         Text(
                                             text = "Rename",
-                                            color = Color(0xFF7C3AED),
+                                            color = theme.primary,
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.SemiBold,
                                             modifier = Modifier.clickable {
@@ -730,15 +785,15 @@ fun MainScreen(
                                                 showRenameDialog = true
                                             }
                                         )
-                                        Text("•", color = Color.Gray, fontSize = 12.sp)
+                                        Text("•", color = theme.textSecondary, fontSize = 12.sp)
                                         Text(
                                             text = "Change Icon",
-                                            color = Color(0xFF7C3AED),
+                                            color = theme.primary,
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.SemiBold,
                                             modifier = Modifier.clickable { showIconDialog = true }
                                         )
-                                        Text("•", color = Color.Gray, fontSize = 12.sp)
+                                        Text("•", color = theme.textSecondary, fontSize = 12.sp)
                                         Text(
                                             text = "Delete",
                                             color = Color(0xFFEF4444),
@@ -777,7 +832,7 @@ fun MainScreen(
                         OutlinedTextField(
                             value = searchQuery,
                             onValueChange = { searchQuery = it },
-                            placeholder = { Text("Search installed apps...", color = Color.Gray, fontSize = 14.sp) },
+                            placeholder = { Text("Search installed apps...", color = theme.textSecondary, fontSize = 14.sp) },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp, vertical = 4.dp),
@@ -788,7 +843,7 @@ fun MainScreen(
                                     IconButton(onClick = { searchQuery = "" }) {
                                         Text(
                                             text = "✕",
-                                            color = Color(0xFF6B7280),
+                                            color = theme.textSecondary,
                                             fontSize = 16.sp,
                                             fontWeight = FontWeight.Bold
                                         )
@@ -796,16 +851,18 @@ fun MainScreen(
                                 }
                             },
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = Color.White,
-                                unfocusedContainerColor = Color.White,
-                                focusedBorderColor = Color(0xFF7C3AED),
-                                unfocusedBorderColor = Color(0xFFEDE9FE)
+                                focusedContainerColor = theme.inputBackground,
+                                unfocusedContainerColor = theme.inputBackground,
+                                focusedBorderColor = theme.primary,
+                                unfocusedBorderColor = theme.cardBorder,
+                                focusedTextColor = theme.textPrimary,
+                                unfocusedTextColor = theme.textPrimary
                             )
                         )
 
                         if (isLoading) {
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator(color = Color(0xFF7C3AED))
+                                CircularProgressIndicator(color = theme.primary)
                             }
                         } else {
                             LazyColumn(
@@ -820,6 +877,7 @@ fun MainScreen(
                                     AppItemRow(
                                         app = app,
                                         isChecked = isChecked,
+                                        theme = theme,
                                         onToggle = {
                                             val updatedList = if (isChecked) {
                                                 currentCategory.packageNames - app.id - app.packageName
@@ -860,7 +918,7 @@ fun MainScreen(
                                     .fillMaxWidth()
                                     .height(52.dp),
                                 shape = RoundedCornerShape(16.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C3AED))
+                                colors = ButtonDefaults.buttonColors(containerColor = theme.primary)
                             ) {
                                 Text("+ Add Category", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                             }
@@ -869,8 +927,9 @@ fun MainScreen(
                         item {
                             SettingsCard(
                                 title = "App Icon Size",
-                                titleColor = Color(0xFF7C3AED),
-                                subtitle = "Adjust how large app icons appear inside the widget grid."
+                                titleColor = theme.primary,
+                                subtitle = "Adjust how large app icons appear inside the widget grid.",
+                                theme = theme
                             ) {
                                 Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                                     Row(
@@ -878,17 +937,17 @@ fun MainScreen(
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text("Icon Dimension", fontSize = 14.sp, color = Color(0xFF374151), fontWeight = FontWeight.Medium)
-                                        Text("${categoryIconSizeDp.toInt()} dp", fontSize = 14.sp, color = Color(0xFF7C3AED), fontWeight = FontWeight.Bold)
+                                        Text("Icon Dimension", fontSize = 14.sp, color = theme.textPrimary, fontWeight = FontWeight.Medium)
+                                        Text("${categoryIconSizeDp.toInt()} dp", fontSize = 14.sp, color = theme.primary, fontWeight = FontWeight.Bold)
                                     }
                                     Slider(
                                         value = categoryIconSizeDp,
                                         onValueChange = { categoryIconSizeDp = it },
                                         valueRange = 32f..54f,
                                         colors = SliderDefaults.colors(
-                                            thumbColor = Color(0xFF7C3AED),
-                                            activeTrackColor = Color(0xFF7C3AED),
-                                            inactiveTrackColor = Color(0xFFEDE9FE)
+                                            thumbColor = theme.primary,
+                                            activeTrackColor = theme.primary,
+                                            inactiveTrackColor = theme.cardBorder
                                         )
                                     )
                                 }
@@ -898,7 +957,7 @@ fun MainScreen(
                         item {
                             Text(
                                 text = "Configured Categories (${categories.size}/6):",
-                                color = Color(0xFF6B7280),
+                                color = theme.textSecondary,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium
                             )
@@ -914,7 +973,7 @@ fun MainScreen(
                                 ) {
                                     Text(
                                         text = "No categories yet.\nTap \"+ Add Category\" to start!",
-                                        color = Color.Gray,
+                                        color = theme.textSecondary,
                                         fontSize = 14.sp,
                                         textAlign = TextAlign.Center
                                     )
@@ -926,9 +985,9 @@ fun MainScreen(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clickable { editingCategoryId = cat.id },
-                                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                                    colors = CardDefaults.cardColors(containerColor = theme.surface),
                                     shape = RoundedCornerShape(16.dp),
-                                    border = BorderStroke(1.dp, Color(0xFFEDE9FE))
+                                    border = BorderStroke(1.dp, theme.cardBorder)
                                 ) {
                                     Row(
                                         modifier = Modifier
@@ -936,27 +995,27 @@ fun MainScreen(
                                             .padding(16.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        CategoryBadgeView(category = cat, size = 46.dp)
+                                        CategoryBadgeView(category = cat, size = 46.dp, theme = theme)
 
                                         Spacer(modifier = Modifier.width(14.dp))
 
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
                                                 text = cat.name,
-                                                color = Color(0xFF1E1B2E),
+                                                color = theme.textPrimary,
                                                 fontSize = 16.sp,
                                                 fontWeight = FontWeight.Bold
                                             )
                                             Text(
                                                 text = "${cat.packageNames.size} apps configured",
-                                                color = Color(0xFF6B7280),
+                                                color = theme.textSecondary,
                                                 fontSize = 12.sp
                                             )
                                         }
 
                                         Text(
                                             text = "Edit →",
-                                            color = Color(0xFF7C3AED),
+                                            color = theme.primary,
                                             fontSize = 13.sp,
                                             fontWeight = FontWeight.SemiBold
                                         )
@@ -968,7 +1027,7 @@ fun MainScreen(
                 }
             }
 
-            // TAB 1: SIDE BAR (Placement, Clock, Font, Size)
+            // TAB 1: SIDE BAR
             if (selectedMainTab == 1) {
                 LazyColumn(
                     modifier = Modifier
@@ -980,17 +1039,20 @@ fun MainScreen(
                         SettingsCard(
                             title = "Sidebar Placement",
                             titleColor = Color(0xFF2563EB),
-                            subtitle = "Dock the category sidebar to the left or right side of your screen."
+                            subtitle = "Dock the category sidebar to the left or right side of your screen.",
+                            theme = theme
                         ) {
                             Column {
                                 RadioOption(
                                     label = "Left Side",
                                     isSelected = sidebarPosition == "left",
+                                    theme = theme,
                                     onClick = { sidebarPosition = "left" }
                                 )
                                 RadioOption(
                                     label = "Right Side",
                                     isSelected = sidebarPosition == "right",
+                                    theme = theme,
                                     onClick = { sidebarPosition = "right" }
                                 )
                             }
@@ -1000,18 +1062,21 @@ fun MainScreen(
                     item {
                         SettingsCard(
                             title = "Sidebar Clock",
-                            titleColor = Color(0xFF7C3AED),
-                            subtitle = "Enable or customize the stacked digital clock above the sidebar."
+                            titleColor = theme.primary,
+                            subtitle = "Enable or customize the stacked digital clock above the sidebar.",
+                            theme = theme
                         ) {
                             Column {
                                 RadioOption(
                                     label = "Show Clock (On)",
                                     isSelected = clockEnabled,
+                                    theme = theme,
                                     onClick = { clockEnabled = true }
                                 )
                                 RadioOption(
                                     label = "Hide Clock (Off)",
                                     isSelected = !clockEnabled,
+                                    theme = theme,
                                     onClick = { clockEnabled = false }
                                 )
 
@@ -1026,10 +1091,10 @@ fun MainScreen(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Column {
-                                            Text("Clock Font", fontSize = 12.sp, color = Color(0xFF6B7280))
-                                            Text(getFontLabel(clockFont), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E1B2E))
+                                            Text("Clock Font", fontSize = 12.sp, color = theme.textSecondary)
+                                            Text(getFontLabel(clockFont), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = theme.textPrimary)
                                         }
-                                        Text("Change Font →", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF7C3AED))
+                                        Text("Change Font →", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = theme.primary)
                                     }
 
                                     Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
@@ -1037,17 +1102,17 @@ fun MainScreen(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween
                                         ) {
-                                            Text("Clock Size", fontSize = 13.sp, color = Color(0xFF374151), fontWeight = FontWeight.Medium)
-                                            Text("${clockSizeSp.toInt()} sp", fontSize = 13.sp, color = Color(0xFF7C3AED), fontWeight = FontWeight.Bold)
+                                            Text("Clock Size", fontSize = 13.sp, color = theme.textPrimary, fontWeight = FontWeight.Medium)
+                                            Text("${clockSizeSp.toInt()} sp", fontSize = 13.sp, color = theme.primary, fontWeight = FontWeight.Bold)
                                         }
                                         Slider(
                                             value = clockSizeSp,
                                             onValueChange = { clockSizeSp = it },
                                             valueRange = 18f..38f,
                                             colors = SliderDefaults.colors(
-                                                thumbColor = Color(0xFF7C3AED),
-                                                activeTrackColor = Color(0xFF7C3AED),
-                                                inactiveTrackColor = Color(0xFFEDE9FE)
+                                                thumbColor = theme.primary,
+                                                activeTrackColor = theme.primary,
+                                                inactiveTrackColor = theme.cardBorder
                                             )
                                         )
                                     }
@@ -1060,22 +1125,26 @@ fun MainScreen(
                         SettingsCard(
                             title = "Vertical Alignment",
                             titleColor = Color(0xFF0284C7),
-                            subtitle = "Position the sidebar tabs at the top, middle, or bottom of the widget."
+                            subtitle = "Position the sidebar tabs at the top, middle, or bottom of the widget.",
+                            theme = theme
                         ) {
                             Column {
                                 RadioOption(
                                     label = "Bottom",
                                     isSelected = sidebarAlignment == "bottom",
+                                    theme = theme,
                                     onClick = { sidebarAlignment = "bottom" }
                                 )
                                 RadioOption(
                                     label = "Middle (Center)",
                                     isSelected = sidebarAlignment == "center",
+                                    theme = theme,
                                     onClick = { sidebarAlignment = "center" }
                                 )
                                 RadioOption(
                                     label = "Top",
                                     isSelected = sidebarAlignment == "top",
+                                    theme = theme,
                                     onClick = { sidebarAlignment = "top" }
                                 )
                             }
@@ -1086,17 +1155,20 @@ fun MainScreen(
                         SettingsCard(
                             title = "Tab Display Style",
                             titleColor = Color(0xFFDB2777),
-                            subtitle = "Choose whether category tabs display icons or full text labels."
+                            subtitle = "Choose whether category tabs display icons or full text labels.",
+                            theme = theme
                         ) {
                             Column {
                                 RadioOption(
                                     label = "Icons (Symbols / Emoji / Gallery)",
                                     isSelected = sidebarDisplayType == "icons",
+                                    theme = theme,
                                     onClick = { sidebarDisplayType = "icons" }
                                 )
                                 RadioOption(
                                     label = "Heading (Full Text Labels)",
                                     isSelected = sidebarDisplayType == "heading",
+                                    theme = theme,
                                     onClick = { sidebarDisplayType = "heading" }
                                 )
                             }
@@ -1107,7 +1179,8 @@ fun MainScreen(
                         SettingsCard(
                             title = "Sidebar Heading Font",
                             titleColor = Color(0xFF059669),
-                            subtitle = "Select font typeface for sidebar labels and headings."
+                            subtitle = "Select font typeface for sidebar labels and headings.",
+                            theme = theme
                         ) {
                             Row(
                                 modifier = Modifier
@@ -1121,20 +1194,20 @@ fun MainScreen(
                                     Text(
                                         text = "Current Font",
                                         fontSize = 12.sp,
-                                        color = Color(0xFF6B7280)
+                                        color = theme.textSecondary
                                     )
                                     Text(
                                         text = getFontLabel(sidebarFont),
                                         fontSize = 15.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF1E1B2E)
+                                        color = theme.textPrimary
                                     )
                                 }
                                 Text(
                                     text = "Change Font →",
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFF7C3AED)
+                                    color = theme.primary
                                 )
                             }
                         }
@@ -1143,8 +1216,9 @@ fun MainScreen(
                     item {
                         SettingsCard(
                             title = "Sidebar Item Size",
-                            titleColor = Color(0xFF7C3AED),
-                            subtitle = "Control text label size, symbol size, and gallery icon scale on the sidebar dock."
+                            titleColor = theme.primary,
+                            subtitle = "Control text label size, symbol size, and gallery icon scale on the sidebar dock.",
+                            theme = theme
                         ) {
                             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                                 Row(
@@ -1152,17 +1226,17 @@ fun MainScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Badge / Text / Icon Scale", fontSize = 14.sp, color = Color(0xFF374151), fontWeight = FontWeight.Medium)
-                                    Text("${sidebarSizeSp.toInt()} sp", fontSize = 14.sp, color = Color(0xFF7C3AED), fontWeight = FontWeight.Bold)
+                                    Text("Badge / Text / Icon Scale", fontSize = 14.sp, color = theme.textPrimary, fontWeight = FontWeight.Medium)
+                                    Text("${sidebarSizeSp.toInt()} sp", fontSize = 14.sp, color = theme.primary, fontWeight = FontWeight.Bold)
                                 }
                                 Slider(
                                     value = sidebarSizeSp,
                                     onValueChange = { sidebarSizeSp = it },
                                     valueRange = 10f..22f,
                                     colors = SliderDefaults.colors(
-                                        thumbColor = Color(0xFF7C3AED),
-                                        activeTrackColor = Color(0xFF7C3AED),
-                                        inactiveTrackColor = Color(0xFFEDE9FE)
+                                        thumbColor = theme.primary,
+                                        activeTrackColor = theme.primary,
+                                        inactiveTrackColor = theme.cardBorder
                                     )
                                 )
                             }
@@ -1173,7 +1247,7 @@ fun MainScreen(
                 }
             }
 
-            // TAB 2: GENERAL (Icon Packs & Animation Styles)
+            // TAB 2: ANIMATION
             if (selectedMainTab == 2) {
                 LazyColumn(
                     modifier = Modifier
@@ -1181,12 +1255,12 @@ fun MainScreen(
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    // CATEGORY SWITCH ANIMATION STYLE SELECTOR
                     item {
                         SettingsCard(
                             title = "Category Switch Animation",
-                            titleColor = Color(0xFF7C3AED),
-                            subtitle = "Select transition effect when switching sidebar categories."
+                            titleColor = theme.primary,
+                            subtitle = "Select transition effect when switching between sidebar categories.",
+                            theme = theme
                         ) {
                             Column {
                                 listOf(
@@ -1199,6 +1273,7 @@ fun MainScreen(
                                     RadioOption(
                                         label = label,
                                         isSelected = animationStyle == key,
+                                        theme = theme,
                                         onClick = { animationStyle = key }
                                     )
                                 }
@@ -1208,14 +1283,46 @@ fun MainScreen(
 
                     item {
                         SettingsCard(
+                            title = "About Transitions",
+                            titleColor = theme.textSecondary,
+                            subtitle = "How animations work in Apps Widget.",
+                            theme = theme
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(
+                                    text = "Category transitions utilize an internal dual-buffered ViewFlipper engine to seamlessly blend incoming and outgoing app grids with zero redraw flashes.",
+                                    color = theme.textSecondary,
+                                    fontSize = 13.sp,
+                                    lineHeight = 17.sp
+                                )
+                            }
+                        }
+                    }
+
+                    item { Spacer(modifier = Modifier.height(16.dp)) }
+                }
+            }
+
+            // TAB 3: ICONS
+            if (selectedMainTab == 3) {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    item {
+                        SettingsCard(
                             title = "App Icon Style & Pack",
                             titleColor = Color(0xFF2563EB),
-                            subtitle = "Select whether to use default system app icons or an installed third-party icon pack."
+                            subtitle = "Select whether to use default system app icons or an installed third-party icon pack.",
+                            theme = theme
                         ) {
                             Column {
                                 RadioOption(
                                     label = "Default (Original System Colors)",
                                     isSelected = unifiedIconStyle == "default",
+                                    theme = theme,
                                     onClick = { unifiedIconStyle = "default" }
                                 )
 
@@ -1229,7 +1336,7 @@ fun MainScreen(
                                             text = "Installed Icon Packs:",
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = Color(0xFF7C3AED)
+                                            color = theme.primary
                                         )
                                     }
 
@@ -1238,6 +1345,7 @@ fun MainScreen(
                                         RadioOption(
                                             label = "${pack.appName} (Icon Pack)",
                                             isSelected = unifiedIconStyle == packVal,
+                                            theme = theme,
                                             onClick = { unifiedIconStyle = packVal }
                                         )
                                     }
@@ -1249,7 +1357,7 @@ fun MainScreen(
                                     ) {
                                         Text(
                                             text = "No icon pack apps detected on your device. You can install Whicons, Flight Lite, or Delta from the Play Store.",
-                                            color = Color.Gray,
+                                            color = theme.textSecondary,
                                             fontSize = 12.sp,
                                             lineHeight = 16.sp
                                         )
@@ -1259,18 +1367,58 @@ fun MainScreen(
                         }
                     }
 
+                    item { Spacer(modifier = Modifier.height(16.dp)) }
+                }
+            }
+
+            // TAB 4: BACKUP & RESTORE
+            if (selectedMainTab == 4) {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
                     item {
                         SettingsCard(
-                            title = "About Apps Widget",
-                            titleColor = Color(0xFF6B7280),
-                            subtitle = "High-performance Nova-grade native launcher widget."
+                            title = "Backup & Restore",
+                            titleColor = theme.primary,
+                            subtitle = "Save your setup to a JSON file or restore anytime.",
+                            theme = theme
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 Text(
-                                    text = "Zero-latency native RemoteViews engine with dynamic transitions, font rendering, scrollable collections, and gallery icon integration.",
-                                    color = Color(0xFF4B5563),
-                                    fontSize = 13.sp
+                                    text = "Exports all configured categories, custom app icons, gallery images, sidebar settings, and layouts into an offline backup file.",
+                                    color = theme.textSecondary,
+                                    fontSize = 13.sp,
+                                    lineHeight = 17.sp
                                 )
+
+                                Spacer(modifier = Modifier.height(16.dp))
+
+                                Button(
+                                    onClick = {
+                                        exportBackupLauncher.launch("apps_widget_backup_${System.currentTimeMillis()}.json")
+                                    },
+                                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = theme.primary)
+                                ) {
+                                    Text("💾 Backup Configuration to File", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                OutlinedButton(
+                                    onClick = {
+                                        importBackupLauncher.launch(arrayOf("application/json", "text/*", "*/*"))
+                                    },
+                                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    border = BorderStroke(1.5.dp, theme.primary)
+                                ) {
+                                    Text("📂 Restore Configuration from File", color = theme.primary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                }
                             }
                         }
                     }
@@ -1281,79 +1429,79 @@ fun MainScreen(
         }
     }
 
-    // Top-Right Settings Dialog
+    // TOP-RIGHT SETTINGS DIALOG (Theme Selection & Reset)
     if (showSettingsDialog) {
         AlertDialog(
             onDismissRequest = { showSettingsDialog = false },
             title = {
                 Text(
-                    text = "Preferences & Backup",
+                    text = "Preferences",
                     fontWeight = FontWeight.Bold,
                     fontSize = 19.sp,
-                    color = Color(0xFF1E1B2E)
+                    color = theme.textPrimary
                 )
             },
             text = {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Text(
-                        text = "Backup your entire configuration, categories, assigned apps, animations, and custom icons to a JSON file, or restore them anytime.",
-                        fontSize = 13.sp,
-                        color = Color(0xFF6B7280),
-                        lineHeight = 17.sp
+                        text = "App Theme",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = theme.primary
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    RadioOption(
+                        label = "Light Mode",
+                        isSelected = !theme.isDark,
+                        theme = theme,
+                        onClick = { onToggleTheme(false) }
+                    )
+                    RadioOption(
+                        label = "Dark Mode",
+                        isSelected = theme.isDark,
+                        theme = theme,
+                        onClick = { onToggleTheme(true) }
                     )
 
                     Spacer(modifier = Modifier.height(16.dp))
-
-                    Button(
-                        onClick = {
-                            exportBackupLauncher.launch("apps_widget_backup_${System.currentTimeMillis()}.json")
-                        },
-                        modifier = Modifier.fillMaxWidth().height(48.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C3AED))
-                    ) {
-                        Text("💾 Backup Configuration to File", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    OutlinedButton(
-                        onClick = {
-                            importBackupLauncher.launch(arrayOf("application/json", "text/*", "*/*"))
-                        },
-                        modifier = Modifier.fillMaxWidth().height(48.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.5.dp, Color(0xFF7C3AED))
-                    ) {
-                        Text("📂 Restore Configuration from File", color = Color(0xFF7C3AED), fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    }
-
-                    Spacer(modifier = Modifier.height(20.dp))
-                    HorizontalDivider(color = Color(0xFFF3E8FF))
+                    HorizontalDivider(color = theme.divider)
                     Spacer(modifier = Modifier.height(16.dp))
 
+                    Text(
+                        text = "Reset",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFEF4444)
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Clear all categories, assigned apps, and settings.",
+                        fontSize = 12.sp,
+                        color = theme.textSecondary
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
                     Button(
-                        onClick = {
-                            showResetConfirmDialog = true
-                        },
-                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        onClick = { showResetConfirmDialog = true },
+                        modifier = Modifier.fillMaxWidth().height(46.dp),
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
                     ) {
-                        Text("⚠️ Reset Everything to Defaults", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text("⚠️ Reset to Defaults", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     }
                 }
             },
             confirmButton = {
                 TextButton(onClick = { showSettingsDialog = false }) {
-                    Text("Close", color = Color(0xFF7C3AED), fontWeight = FontWeight.SemiBold)
+                    Text("Done", color = theme.primary, fontWeight = FontWeight.SemiBold)
                 }
             },
-            containerColor = Color.White
+            containerColor = theme.surface
         )
     }
 
-    // Reset Confirm Dialog
+    // Reset Confirmation Dialog
     if (showResetConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showResetConfirmDialog = false },
@@ -1362,8 +1510,8 @@ fun MainScreen(
             },
             text = {
                 Text(
-                    text = "Are you sure you want to clear all categories, assigned apps, custom gallery icons, and reset all layout settings to default?",
-                    color = Color(0xFF374151),
+                    text = "Are you sure you want to reset all categories, assigned apps, custom gallery icons, and layout settings back to default?",
+                    color = theme.textPrimary,
                     fontSize = 14.sp
                 )
             },
@@ -1391,7 +1539,7 @@ fun MainScreen(
 
                         showResetConfirmDialog = false
                         showSettingsDialog = false
-                        Toast.makeText(context, "Reset complete! Everything restored to default.", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Reset complete! Restored to defaults.", Toast.LENGTH_SHORT).show()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
                 ) {
@@ -1400,267 +1548,10 @@ fun MainScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showResetConfirmDialog = false }) {
-                    Text("Cancel", color = Color.Gray)
+                    Text("Cancel", color = theme.textSecondary)
                 }
             },
-            containerColor = Color.White
-        )
-    }
-
-    // Sidebar Font Dialog
-    if (showFontDialog) {
-        AlertDialog(
-            onDismissRequest = { showFontDialog = false },
-            title = { Text("Select Sidebar Font", fontWeight = FontWeight.Bold, color = Color(0xFF1E1B2E)) },
-            text = {
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 380.dp)
-                ) {
-                    items(fontOptions) { (key, label) ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    sidebarFont = key
-                                    showFontDialog = false
-                                }
-                                .padding(vertical = 12.dp, horizontal = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(18.dp)
-                                    .border(
-                                        width = 2.dp,
-                                        color = if (sidebarFont == key) Color(0xFF7C3AED) else Color(0xFF9CA3AF),
-                                        shape = CircleShape
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                if (sidebarFont == key) {
-                                    Box(modifier = Modifier.size(9.dp).background(Color(0xFF7C3AED), CircleShape))
-                                }
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(
-                                text = label,
-                                fontSize = 14.sp,
-                                fontWeight = if (sidebarFont == key) FontWeight.Bold else FontWeight.Normal,
-                                color = if (sidebarFont == key) Color(0xFF7C3AED) else Color(0xFF1E1B2E)
-                            )
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showFontDialog = false }) {
-                    Text("Close", color = Color(0xFF7C3AED))
-                }
-            },
-            containerColor = Color.White
-        )
-    }
-
-    // Clock Font Dialog
-    if (showClockFontDialog) {
-        AlertDialog(
-            onDismissRequest = { showClockFontDialog = false },
-            title = { Text("Select Clock Font", fontWeight = FontWeight.Bold, color = Color(0xFF1E1B2E)) },
-            text = {
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 380.dp)
-                ) {
-                    items(fontOptions) { (key, label) ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    clockFont = key
-                                    showClockFontDialog = false
-                                }
-                                .padding(vertical = 12.dp, horizontal = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(18.dp)
-                                    .border(
-                                        width = 2.dp,
-                                        color = if (clockFont == key) Color(0xFF7C3AED) else Color(0xFF9CA3AF),
-                                        shape = CircleShape
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                if (clockFont == key) {
-                                    Box(modifier = Modifier.size(9.dp).background(Color(0xFF7C3AED), CircleShape))
-                                }
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(
-                                text = label,
-                                fontSize = 14.sp,
-                                fontWeight = if (clockFont == key) FontWeight.Bold else FontWeight.Normal,
-                                color = if (clockFont == key) Color(0xFF7C3AED) else Color(0xFF1E1B2E)
-                            )
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showClockFontDialog = false }) {
-                    Text("Close", color = Color(0xFF7C3AED))
-                }
-            },
-            containerColor = Color.White
-        )
-    }
-
-    // Add Category Dialog
-    if (showAddCategoryDialog) {
-        AlertDialog(
-            onDismissRequest = { showAddCategoryDialog = false },
-            title = { Text("New Category", fontWeight = FontWeight.Bold, color = Color(0xFF1E1B2E)) },
-            text = {
-                Column {
-                    Text("Enter category name (max 12 characters):", color = Color.Gray, fontSize = 13.sp)
-                    Spacer(modifier = Modifier.height(12.dp))
-                    OutlinedTextField(
-                        value = newCategoryName,
-                        onValueChange = { if (it.length <= 12) newCategoryName = it },
-                        placeholder = { Text("e.g. Home, Bank, Tools, AI") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val trimmed = newCategoryName.trim()
-                        if (trimmed.isNotEmpty()) {
-                            val newCat = Category(
-                                id = "cat_" + System.currentTimeMillis(),
-                                name = trimmed,
-                                packageNames = emptyList(),
-                                icon = "★"
-                            )
-                            categories = categories + newCat
-                            editingCategoryId = newCat.id
-                            showAddCategoryDialog = false
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C3AED))
-                ) {
-                    Text("Create & Open", color = Color.White)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showAddCategoryDialog = false }) {
-                    Text("Cancel", color = Color.Gray)
-                }
-            },
-            containerColor = Color.White
-        )
-    }
-
-    // Rename Category Dialog
-    if (showRenameDialog) {
-        val currentCategory = categories.firstOrNull { it.id == editingCategoryId }
-        AlertDialog(
-            onDismissRequest = { showRenameDialog = false },
-            title = { Text("Rename Category", fontWeight = FontWeight.Bold, color = Color(0xFF1E1B2E)) },
-            text = {
-                Column {
-                    OutlinedTextField(
-                        value = renameValue,
-                        onValueChange = { if (it.length <= 12) renameValue = it },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val trimmed = renameValue.trim()
-                        if (trimmed.isNotEmpty() && currentCategory != null) {
-                            categories = categories.map {
-                                if (it.id == currentCategory.id) it.copy(name = trimmed) else it
-                            }
-                            showRenameDialog = false
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C3AED))
-                ) {
-                    Text("Rename", color = Color.White)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showRenameDialog = false }) {
-                    Text("Cancel", color = Color.Gray)
-                }
-            },
-            containerColor = Color.White
-        )
-    }
-
-    // Category Icon Dialog
-    if (showIconDialog) {
-        AlertDialog(
-            onDismissRequest = { showIconDialog = false },
-            title = { Text("Category Icon", fontWeight = FontWeight.Bold, color = Color(0xFF1E1B2E)) },
-            text = {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Button(
-                        onClick = { galleryLauncher.launch("image/*") },
-                        modifier = Modifier.fillMaxWidth().height(48.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
-                    ) {
-                        Text("📁 Upload Icon from Gallery", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-                    Text("Or choose a modern minimal symbol:", color = Color.Gray, fontSize = 12.sp)
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    LazyColumn(
-                        modifier = Modifier.fillMaxWidth().heightIn(max = 280.dp)
-                    ) {
-                        items(modernCuratedSymbols.chunked(6)) { rowIcons ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                rowIcons.forEach { symbol ->
-                                    Box(
-                                        modifier = Modifier
-                                            .size(38.dp)
-                                            .background(Color(0xFFF3E8FF), CircleShape)
-                                            .clickable {
-                                                if (currentCategory != null) {
-                                                    categories = categories.map {
-                                                        if (it.id == currentCategory.id) it.copy(icon = symbol) else it
-                                                    }
-                                                }
-                                                showIconDialog = false
-                                            },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(symbol, fontSize = 18.sp, color = Color(0xFF7C3AED), fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showIconDialog = false }) {
-                    Text("Cancel", color = Color.Gray)
-                }
-            },
-            containerColor = Color.White
+            containerColor = theme.surface
         )
     }
 
@@ -1674,7 +1565,7 @@ fun MainScreen(
                     text = "Icon for ${app.appName}",
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp,
-                    color = Color(0xFF1E1B2E)
+                    color = theme.textPrimary
                 )
             },
             text = {
@@ -1696,7 +1587,7 @@ fun MainScreen(
                             AppIconHelper.clearCache(context)
                             editingAppForIcon = null
                             iconUpdateCounter++
-                            Toast.makeText(context, "Reset to default app icon", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Reset to default icon", Toast.LENGTH_SHORT).show()
                         },
                         modifier = Modifier.fillMaxWidth().height(44.dp),
                         shape = RoundedCornerShape(12.dp),
@@ -1706,7 +1597,7 @@ fun MainScreen(
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text("Or choose a modern minimal symbol:", color = Color.Gray, fontSize = 12.sp)
+                    Text("Or choose a modern minimal symbol:", color = theme.textSecondary, fontSize = 12.sp)
                     Spacer(modifier = Modifier.height(8.dp))
 
                     LazyColumn(
@@ -1721,7 +1612,7 @@ fun MainScreen(
                                     Box(
                                         modifier = Modifier
                                             .size(38.dp)
-                                            .background(Color(0xFFF3E8FF), CircleShape)
+                                            .background(if (theme.isDark) Color(0xFF282834) else Color(0xFFF3E8FF), CircleShape)
                                             .clickable {
                                                 prefs.edit().putString("custom_app_icon_${app.packageName}", "symbol:$symbol").apply()
                                                 AppIconHelper.clearCache(context)
@@ -1731,7 +1622,7 @@ fun MainScreen(
                                             },
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Text(symbol, fontSize = 18.sp, color = Color(0xFF7C3AED), fontWeight = FontWeight.Bold)
+                                        Text(symbol, fontSize = 18.sp, color = theme.primary, fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
@@ -1741,10 +1632,283 @@ fun MainScreen(
             },
             confirmButton = {
                 TextButton(onClick = { editingAppForIcon = null }) {
-                    Text("Cancel", color = Color(0xFF7C3AED))
+                    Text("Cancel", color = theme.primary)
                 }
             },
-            containerColor = Color.White
+            containerColor = theme.surface
+        )
+    }
+
+    // Category Icon Dialog
+    if (showIconDialog) {
+        AlertDialog(
+            onDismissRequest = { showIconDialog = false },
+            title = { Text("Category Icon", fontWeight = FontWeight.Bold, color = theme.textPrimary) },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Button(
+                        onClick = { galleryLauncher.launch("image/*") },
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
+                    ) {
+                        Text("📁 Upload Icon from Gallery", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Text("Or choose a modern minimal symbol:", color = theme.textSecondary, fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 280.dp)
+                    ) {
+                        items(modernCuratedSymbols.chunked(6)) { rowIcons ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                rowIcons.forEach { symbol ->
+                                    Box(
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .background(if (theme.isDark) Color(0xFF282834) else Color(0xFFF3E8FF), CircleShape)
+                                            .clickable {
+                                                if (currentCategory != null) {
+                                                    categories = categories.map {
+                                                        if (it.id == currentCategory.id) it.copy(icon = symbol) else it
+                                                    }
+                                                }
+                                                showIconDialog = false
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(symbol, fontSize = 18.sp, color = theme.primary, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showIconDialog = false }) {
+                    Text("Cancel", color = theme.primary)
+                }
+            },
+            containerColor = theme.surface
+        )
+    }
+
+    // Sidebar Font Dialog
+    if (showFontDialog) {
+        AlertDialog(
+            onDismissRequest = { showFontDialog = false },
+            title = { Text("Select Sidebar Font", fontWeight = FontWeight.Bold, color = theme.textPrimary) },
+            text = {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 380.dp)
+                ) {
+                    items(fontOptions) { (key, label) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    sidebarFont = key
+                                    showFontDialog = false
+                                }
+                                .padding(vertical = 12.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(18.dp)
+                                    .border(
+                                        width = 2.dp,
+                                        color = if (sidebarFont == key) theme.primary else theme.textSecondary,
+                                        shape = CircleShape
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (sidebarFont == key) {
+                                    Box(modifier = Modifier.size(9.dp).background(theme.primary, CircleShape))
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = label,
+                                fontSize = 14.sp,
+                                fontWeight = if (sidebarFont == key) FontWeight.Bold else FontWeight.Normal,
+                                color = if (sidebarFont == key) theme.primary else theme.textPrimary
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showFontDialog = false }) {
+                    Text("Close", color = theme.primary)
+                }
+            },
+            containerColor = theme.surface
+        )
+    }
+
+    // Clock Font Dialog
+    if (showClockFontDialog) {
+        AlertDialog(
+            onDismissRequest = { showClockFontDialog = false },
+            title = { Text("Select Clock Font", fontWeight = FontWeight.Bold, color = theme.textPrimary) },
+            text = {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 380.dp)
+                ) {
+                    items(fontOptions) { (key, label) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    clockFont = key
+                                    showClockFontDialog = false
+                                }
+                                .padding(vertical = 12.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(18.dp)
+                                    .border(
+                                        width = 2.dp,
+                                        color = if (clockFont == key) theme.primary else theme.textSecondary,
+                                        shape = CircleShape
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (clockFont == key) {
+                                    Box(modifier = Modifier.size(9.dp).background(theme.primary, CircleShape))
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = label,
+                                fontSize = 14.sp,
+                                fontWeight = if (clockFont == key) FontWeight.Bold else FontWeight.Normal,
+                                color = if (clockFont == key) theme.primary else theme.textPrimary
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showClockFontDialog = false }) {
+                    Text("Close", color = theme.primary)
+                }
+            },
+            containerColor = theme.surface
+        )
+    }
+
+    // Add Category Dialog
+    if (showAddCategoryDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddCategoryDialog = false },
+            title = { Text("New Category", fontWeight = FontWeight.Bold, color = theme.textPrimary) },
+            text = {
+                Column {
+                    Text("Enter category name (max 12 characters):", color = theme.textSecondary, fontSize = 13.sp)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = newCategoryName,
+                        onValueChange = { if (it.length <= 12) newCategoryName = it },
+                        placeholder = { Text("e.g. Home, Bank, Tools, AI") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = theme.inputBackground,
+                            unfocusedContainerColor = theme.inputBackground,
+                            focusedBorderColor = theme.primary,
+                            unfocusedBorderColor = theme.cardBorder,
+                            focusedTextColor = theme.textPrimary,
+                            unfocusedTextColor = theme.textPrimary
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val trimmed = newCategoryName.trim()
+                        if (trimmed.isNotEmpty()) {
+                            val newCat = Category(
+                                id = "cat_" + System.currentTimeMillis(),
+                                name = trimmed,
+                                packageNames = emptyList(),
+                                icon = "★"
+                            )
+                            categories = categories + newCat
+                            editingCategoryId = newCat.id
+                            showAddCategoryDialog = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = theme.primary)
+                ) {
+                    Text("Create & Open", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddCategoryDialog = false }) {
+                    Text("Cancel", color = theme.textSecondary)
+                }
+            },
+            containerColor = theme.surface
+        )
+    }
+
+    // Rename Category Dialog
+    if (showRenameDialog) {
+        val currentCat = categories.firstOrNull { it.id == editingCategoryId }
+        AlertDialog(
+            onDismissRequest = { showRenameDialog = false },
+            title = { Text("Rename Category", fontWeight = FontWeight.Bold, color = theme.textPrimary) },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = renameValue,
+                        onValueChange = { if (it.length <= 12) renameValue = it },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = theme.inputBackground,
+                            unfocusedContainerColor = theme.inputBackground,
+                            focusedBorderColor = theme.primary,
+                            unfocusedBorderColor = theme.cardBorder,
+                            focusedTextColor = theme.textPrimary,
+                            unfocusedTextColor = theme.textPrimary
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val trimmed = renameValue.trim()
+                        if (trimmed.isNotEmpty() && currentCat != null) {
+                            categories = categories.map {
+                                if (it.id == currentCat.id) it.copy(name = trimmed) else it
+                            }
+                            showRenameDialog = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = theme.primary)
+                ) {
+                    Text("Rename", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRenameDialog = false }) {
+                    Text("Cancel", color = theme.textSecondary)
+                }
+            },
+            containerColor = theme.surface
         )
     }
 }
@@ -1754,13 +1918,14 @@ private fun SettingsCard(
     title: String,
     titleColor: Color,
     subtitle: String,
+    theme: ConfigThemePalette,
     content: @Composable () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = theme.surface),
         shape = RoundedCornerShape(20.dp),
-        border = BorderStroke(1.dp, Color(0xFFEDE9FE))
+        border = BorderStroke(1.dp, theme.cardBorder)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Column(
@@ -1780,7 +1945,7 @@ private fun SettingsCard(
                 Text(
                     text = subtitle,
                     fontSize = 12.sp,
-                    color = Color(0xFF6B7280),
+                    color = theme.textSecondary,
                     textAlign = TextAlign.Center,
                     lineHeight = 16.sp
                 )
@@ -1789,7 +1954,7 @@ private fun SettingsCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(1.dp)
-                    .background(Color(0xFFF3E8FF))
+                    .background(theme.divider)
             )
             content()
             Spacer(modifier = Modifier.height(6.dp))
@@ -1801,6 +1966,7 @@ private fun SettingsCard(
 private fun RadioOption(
     label: String,
     isSelected: Boolean,
+    theme: ConfigThemePalette,
     onClick: () -> Unit
 ) {
     Row(
@@ -1815,7 +1981,7 @@ private fun RadioOption(
                 .size(20.dp)
                 .border(
                     width = 2.dp,
-                    color = if (isSelected) Color(0xFF7C3AED) else Color(0xFF9CA3AF),
+                    color = if (isSelected) theme.primary else theme.textSecondary,
                     shape = CircleShape
                 ),
             contentAlignment = Alignment.Center
@@ -1824,7 +1990,7 @@ private fun RadioOption(
                 Box(
                     modifier = Modifier
                         .size(10.dp)
-                        .background(Color(0xFF7C3AED), CircleShape)
+                        .background(theme.primary, CircleShape)
                 )
             }
         }
@@ -1833,7 +1999,7 @@ private fun RadioOption(
             text = label,
             fontSize = 15.sp,
             fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-            color = if (isSelected) Color(0xFF1E1B2E) else Color(0xFF374151)
+            color = if (isSelected) theme.textPrimary else theme.textSecondary
         )
     }
 }
@@ -1842,6 +2008,7 @@ private fun RadioOption(
 private fun AppItemRow(
     app: AppModel,
     isChecked: Boolean,
+    theme: ConfigThemePalette,
     onToggle: () -> Unit,
     onChangeIcon: () -> Unit,
     updateCounter: Int
@@ -1855,8 +2022,8 @@ private fun AppItemRow(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 3.dp)
-            .background(Color.White, RoundedCornerShape(14.dp))
-            .border(1.dp, Color(0xFFEDE9FE), RoundedCornerShape(14.dp))
+            .background(theme.surface, RoundedCornerShape(14.dp))
+            .border(1.dp, theme.cardBorder, RoundedCornerShape(14.dp))
             .clickable(onClick = onToggle)
             .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -1879,10 +2046,10 @@ private fun AppItemRow(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color(0xFFEDE9FE)),
+                        .background(if (theme.isDark) Color(0xFF282834) else Color(0xFFEDE9FE)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("⚙", color = Color(0xFF7C3AED))
+                    Text("⚙", color = theme.primary)
                 }
             }
         }
@@ -1892,14 +2059,14 @@ private fun AppItemRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = app.appName,
-                color = Color(0xFF1E1B2E),
+                color = theme.textPrimary,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1
             )
             Text(
                 text = app.packageName,
-                color = Color(0xFF6B7280),
+                color = theme.textSecondary,
                 fontSize = 11.sp,
                 maxLines = 1
             )
@@ -1909,15 +2076,15 @@ private fun AppItemRow(
             onClick = onChangeIcon,
             contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
         ) {
-            Text("Icon ✎", fontSize = 11.sp, color = Color(0xFF7C3AED), fontWeight = FontWeight.Bold)
+            Text("Icon ✎", fontSize = 11.sp, color = theme.primary, fontWeight = FontWeight.Bold)
         }
 
         Checkbox(
             checked = isChecked,
             onCheckedChange = null,
             colors = CheckboxDefaults.colors(
-                checkedColor = Color(0xFF7C3AED),
-                uncheckedColor = Color(0xFFD1D5DB)
+                checkedColor = theme.primary,
+                uncheckedColor = theme.textSecondary
             )
         )
     }
