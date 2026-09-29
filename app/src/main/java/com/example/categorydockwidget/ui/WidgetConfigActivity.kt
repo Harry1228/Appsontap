@@ -648,10 +648,12 @@ fun MainScreen(
     Scaffold(
         topBar = {
             if (currentScreen == NovaScreen.HOME && editingCategoryId == null) {
+                // Main Header: Includes statusBarsPadding to safely avoid clock/battery collision
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 18.dp),
+                        .statusBarsPadding()
+                        .padding(horizontal = 24.dp, top = 16.dp, bottom = 12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -667,6 +669,8 @@ fun MainScreen(
                 }
             } else {
                 TopAppBar(
+                    modifier = Modifier.statusBarsPadding(),
+                    windowInsets = WindowInsets(0.dp),
                     title = {
                         val title = when {
                             editingCategoryId != null -> currentCategory?.name ?: "Category"
