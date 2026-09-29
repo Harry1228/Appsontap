@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -316,7 +317,6 @@ fun MainScreen(
     var sidebarIconSizeSp by remember { mutableFloatStateOf(prefs.getInt("sidebar_icon_size_sp", 28).toFloat()) }
     var categoryIconSizeDp by remember { mutableFloatStateOf(prefs.getInt("category_icon_size_dp", 46).toFloat()) }
 
-    // Grid Options: Columns, Spacing, and Alignment
     var gridColumns by remember { mutableIntStateOf(prefs.getInt("grid_columns", 5)) }
     var gridRowSpacing by remember { mutableFloatStateOf(prefs.getInt("grid_row_spacing", 8).toFloat()) }
     var gridColSpacing by remember { mutableFloatStateOf(prefs.getInt("grid_col_spacing", 6).toFloat()) }
@@ -596,7 +596,7 @@ fun MainScreen(
                             .putString("sidebar_display_type", backupBundle.sidebarDisplayType)
                             .putInt("sidebar_text_size_sp", sidebarTextSizeSp.toInt())
                             .putInt("sidebar_icon_size_sp", sidebarIconSizeSp.toInt())
-                            .putInt("category_icon_size_dp", backupBundle.categoryIconSizeDp)
+                            .putInt("category_icon_size_dp", categoryIconSizeDp)
                             .putInt("grid_columns", gridColumns)
                             .putInt("grid_row_spacing", gridRowSpacing.toInt())
                             .putInt("grid_col_spacing", gridColSpacing.toInt())
@@ -1141,7 +1141,6 @@ fun MainScreen(
                     }
                 }
 
-                // 2. APP GRID SUBPAGE: COLUMNS, SPACING & ALIGNMENT
                 currentScreen == NovaScreen.APP_GRID -> {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize().padding(16.dp),
