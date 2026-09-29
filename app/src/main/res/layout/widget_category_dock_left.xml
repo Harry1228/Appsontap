@@ -14,7 +14,7 @@
         android:gravity="center_horizontal"
         android:orientation="vertical">
 
-        <!-- Top Stacked Digital Clock (04 / 36) -->
+        <!-- Top Stacked Digital Clock -->
         <LinearLayout
             android:id="@+id/clock_container"
             android:layout_width="match_parent"
@@ -44,7 +44,7 @@
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <!-- Category Dock Pills (Using ImageView for crash-free icon & font rendering) -->
+        <!-- Category Dock Pills -->
         <FrameLayout
             android:id="@+id/cat_container_0"
             android:layout_width="44dp"
@@ -147,16 +147,34 @@
         </FrameLayout>
     </LinearLayout>
 
-    <!-- RIGHT: 5-Column Floating App Grid -->
-    <GridView
-        android:id="@+id/app_grid_view"
+    <!-- RIGHT: Animated ViewFlipper with Dual Buffering -->
+    <ViewFlipper
+        android:id="@+id/app_view_flipper"
         android:layout_width="0dp"
         android:layout_height="match_parent"
         android:layout_marginStart="4dp"
         android:layout_weight="1"
-        android:gravity="center"
-        android:horizontalSpacing="4dp"
-        android:numColumns="5"
-        android:stretchMode="columnWidth"
-        android:verticalSpacing="4dp" />
+        android:inAnimation="@android:anim/fade_in"
+        android:outAnimation="@android:anim/fade_out">
+
+        <GridView
+            android:id="@+id/app_grid_view_0"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:horizontalSpacing="4dp"
+            android:numColumns="5"
+            android:stretchMode="columnWidth"
+            android:verticalSpacing="4dp" />
+
+        <GridView
+            android:id="@+id/app_grid_view_1"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:horizontalSpacing="4dp"
+            android:numColumns="5"
+            android:stretchMode="columnWidth"
+            android:verticalSpacing="4dp" />
+    </ViewFlipper>
 </LinearLayout>

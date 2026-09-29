@@ -6,18 +6,36 @@
     android:orientation="horizontal"
     android:padding="6dp">
 
-    <!-- LEFT: 5-Column Floating App Grid -->
-    <GridView
-        android:id="@+id/app_grid_view"
+    <!-- LEFT: Animated ViewFlipper with Dual Buffering -->
+    <ViewFlipper
+        android:id="@+id/app_view_flipper"
         android:layout_width="0dp"
         android:layout_height="match_parent"
         android:layout_marginEnd="4dp"
         android:layout_weight="1"
-        android:gravity="center"
-        android:horizontalSpacing="4dp"
-        android:numColumns="5"
-        android:stretchMode="columnWidth"
-        android:verticalSpacing="4dp" />
+        android:inAnimation="@android:anim/fade_in"
+        android:outAnimation="@android:anim/fade_out">
+
+        <GridView
+            android:id="@+id/app_grid_view_0"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:horizontalSpacing="4dp"
+            android:numColumns="5"
+            android:stretchMode="columnWidth"
+            android:verticalSpacing="4dp" />
+
+        <GridView
+            android:id="@+id/app_grid_view_1"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:horizontalSpacing="4dp"
+            android:numColumns="5"
+            android:stretchMode="columnWidth"
+            android:verticalSpacing="4dp" />
+    </ViewFlipper>
 
     <!-- RIGHT: Clock + Category Pills Dock -->
     <LinearLayout

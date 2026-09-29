@@ -120,7 +120,7 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             }
         }
 
-        // Fast in-place switch: Updates only pill highlights and notifies the grid adapter
+        // Animated Dual-Buffered Crossfade Switch
         fun switchCategorySeamless(
             context: Context,
             appWidgetManager: AppWidgetManager,
@@ -128,7 +128,15 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             newCatId: String
         ) {
             val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
-            prefs.edit().putString("selected_category_$appWidgetId", newCatId).apply()
+            val currentSlot = prefs.getInt("active_flipper_slot_$appWidgetId", 0)
+            val nextSlot = if (currentSlot == 0) 1 else 0
+
+            prefs.edit()
+                .putString("selected_category_$appWidgetId", newCatId)
+                .putInt("active_flipper_slot_$appWidgetId", nextSlot)
+                .apply()
+
+            val nextGridId = if (nextSlot == 0) R.id.app_grid_view_0 else R.id.app_grid_view_1
 
             val rawJson = prefs.getString("categories_json", null)
             val categories: List<Category> = if (rawJson != null) {
@@ -149,9 +157,9 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                 R.layout.widget_category_dock_left
             }
 
-            // Incremental update: does not disconnect the GridView or re-inflate the root hierarchy
             val partialViews = RemoteViews(context.packageName, layoutRes)
 
+            // Update pill highlight states
             for (j in CAT_CONTAINER_IDS.indices) {
                 if (j < categories.size) {
                     val cat = categories[j]
@@ -163,11 +171,12 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                 }
             }
 
+            // Update the incoming grid and trigger the crossfade transition
+            appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, nextGridId)
+            partialViews.setDisplayedChild(R.id.app_view_flipper, nextSlot)
             appWidgetManager.partiallyUpdateAppWidget(appWidgetId, partialViews)
-            appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.app_grid_view)
         }
 
-        // Full setup update (called on initial placement, reboot, or configuration save)
         fun updateWidget(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int) {
             try {
                 val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
@@ -290,13 +299,23 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                     }
                 }
 
-                // 4. Bind GridView adapter (only needed on full refresh)
-                val serviceIntent = Intent(context, AppGridWidgetService::class.java).apply {
-                    putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
-                    data = Uri.parse(toUri(Intent.URI_INTENT_SCHEME))
-                }
-                views.setRemoteAdapter(R.id.app_grid_view, serviceIntent)
+                // 4. Bind Both Flipper Grid Buffers
+                val currentSlot = prefs.getInt("active_flipper_slot_$appWidgetId", 0)
+                views.setDisplayedChild(R.id.app_view_flipper, currentSlot)
 
+                val serviceIntent0 = Intent(context, AppGridWidgetService::class.java).apply {
+                    putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+                    data = Uri.parse("widget://categorydock/grid/$appWidgetId/0")
+                }
+                views.setRemoteAdapter(R.id.app_grid_view_0, serviceIntent0)
+
+                val serviceIntent1 = Intent(context, AppGridWidgetService::class.java).apply {
+                    putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+                    data = Uri.parse("widget://categorydock/grid/$appWidgetId/1")
+                }
+                views.setRemoteAdapter(R.id.app_grid_view_1, serviceIntent1)
+
+                // Fill-in Intent Template for both grids
                 val launchIntent = Intent(context, CategoryWidgetProvider::class.java).apply {
                     action = ACTION_LAUNCH_APP
                     putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
@@ -307,9 +326,11 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                     PendingIntent.FLAG_UPDATE_CURRENT
                 }
                 val pendingTemplate = PendingIntent.getBroadcast(context, appWidgetId, launchIntent, flagMutable)
-                views.setPendingIntentTemplate(R.id.app_grid_view, pendingTemplate)
+                views.setPendingIntentTemplate(R.id.app_grid_view_0, pendingTemplate)
+                views.setPendingIntentTemplate(R.id.app_grid_view_1, pendingTemplate)
 
-                appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.app_grid_view)
+                val activeGridId = if (currentSlot == 0) R.id.app_grid_view_0 else R.id.app_grid_view_1
+                appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, activeGridId)
                 appWidgetManager.updateAppWidget(appWidgetId, views)
             } catch (_: Exception) {}
         }
@@ -340,7 +361,6 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                 )
                 if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
                     val appWidgetManager = AppWidgetManager.getInstance(context)
-                    // Fast partial switch eliminates the screen flash & re-inflation glitch
                     switchCategorySeamless(context, appWidgetManager, appWidgetId, catId)
                 }
             }
