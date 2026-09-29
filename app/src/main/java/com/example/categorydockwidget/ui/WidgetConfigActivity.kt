@@ -110,7 +110,7 @@ fun MainScreen(
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE) }
 
-    var selectedMainTab by remember { mutableIntStateOf(1) } // Default to "Side Bar" as in design
+    var selectedMainTab by remember { mutableIntStateOf(1) }
     var editingCategoryId by remember { mutableStateOf<String?>(null) }
 
     var showAddCategoryDialog by remember { mutableStateOf(false) }
@@ -205,7 +205,7 @@ fun MainScreen(
                             sidebarPosition,
                             sidebarAlignment,
                             sidebarDisplayType,
-                            sidebarSizeSp.toInt>,
+                            sidebarSizeSp.toInt(),
                             categoryIconSizeDp.toInt()
                         )
                     },
@@ -224,7 +224,6 @@ fun MainScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Standard TabRow with automatic purple indicator
             TabRow(
                 selectedTabIndex = selectedMainTab,
                 containerColor = Color.White,

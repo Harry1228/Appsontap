@@ -41,8 +41,8 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             val selectedId = prefs.getString("selected_category_$appWidgetId", null)
             val rawJson = prefs.getString("categories_json", null)
             val sidebarPosition = prefs.getString("sidebar_position", "right") ?: "right"
-            val sidebarAlignment = prefs.getString("sidebar_alignment", "center") ?: "center"
-            val sidebarDisplay = prefs.getString("sidebar_display_type", "icons") ?: "icons"
+            val sidebarAlignment = prefs.getString("sidebar_alignment", "bottom") ?: "bottom"
+            val sidebarDisplay = prefs.getString("sidebar_display_type", "heading") ?: "heading"
             val sidebarSizeSp = prefs.getInt("sidebar_icon_size_sp", 14)
 
             val categories: List<Category> = if (rawJson != null) {
@@ -63,15 +63,11 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             }
 
             val views = RemoteViews(context.packageName, layoutRes)
-
             val activeCategory = categories.firstOrNull { it.id == selectedId } ?: categories.firstOrNull()
 
             // 1. Heading and Divider
-            if (activeCategory != null) {
-                views.setTextViewText(R.id.widget_category_title, activeCategory.name.uppercase())
-            } else {
-                views.setTextViewText(R.id.widget_category_title, "APPS WIDGET")
-            }
+            val titleText = if (activeCategory != null) activeCategory.name.uppercase() else "APPS WIDGET"
+            views.setTextViewText(R.id.widget_category_title, titleText)
             views.setViewVisibility(R.id.widget_category_title, View.VISIBLE)
             views.setViewVisibility(R.id.category_title_divider, View.VISIBLE)
 
@@ -93,7 +89,7 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                     val cat = categories[j]
                     val isSelected = cat.id == activeCategory?.id
 
-                    val displayText = if (sidebarDisplay == "text") {
+                    val displayText = if (sidebarDisplay == "heading" || sidebarDisplay == "text") {
                         cat.name.take(3).uppercase()
                     } else {
                         cat.displayBadge
