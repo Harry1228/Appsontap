@@ -110,10 +110,9 @@ fun MainScreen(
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE) }
 
-    var selectedMainTab by remember { mutableIntStateOf(1) } // Default to "Side Bar" as in image
+    var selectedMainTab by remember { mutableIntStateOf(1) } // Default to "Side Bar" as in design
     var editingCategoryId by remember { mutableStateOf<String?>(null) }
 
-    // Dialogs
     var showAddCategoryDialog by remember { mutableStateOf(false) }
     var newCategoryName by remember { mutableStateOf("") }
     var showRenameDialog by remember { mutableStateOf(false) }
@@ -136,7 +135,6 @@ fun MainScreen(
         mutableStateOf(initial)
     }
 
-    // Settings
     var sidebarPosition by remember {
         mutableStateOf(prefs.getString("sidebar_position", "right") ?: "right")
     }
@@ -207,7 +205,7 @@ fun MainScreen(
                             sidebarPosition,
                             sidebarAlignment,
                             sidebarDisplayType,
-                            sidebarSizeSp.toInt(),
+                            sidebarSizeSp.toInt>,
                             categoryIconSizeDp.toInt()
                         )
                     },
@@ -226,18 +224,11 @@ fun MainScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Three Tabs: Categories, Side Bar, General
+            // Standard TabRow with automatic purple indicator
             TabRow(
                 selectedTabIndex = selectedMainTab,
                 containerColor = Color.White,
-                contentColor = Color(0xFF7C3AED),
-                indicator = { tabPositions ->
-                    TabRowDefaults.SecondaryIndicator(
-                        Modifier.tabIndicatorOffset(tabPositions[selectedMainTab]),
-                        color = Color(0xFF7C3AED),
-                        height = 3.dp
-                    )
-                }
+                contentColor = Color(0xFF7C3AED)
             ) {
                 listOf("Categories", "Side Bar", "General").forEachIndexed { index, title ->
                     Tab(
@@ -263,7 +254,6 @@ fun MainScreen(
                 val currentCategory = categories.firstOrNull { it.id == editingCategoryId }
 
                 if (currentCategory != null) {
-                    // Category App Selection Screen (Unlimited apps, scrollable)
                     Column(modifier = Modifier.fillMaxSize()) {
                         Row(
                             modifier = Modifier
@@ -420,7 +410,6 @@ fun MainScreen(
                         }
                     }
                 } else {
-                    // Categories Overview + App Icon Size Slider Card
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxSize()
@@ -447,7 +436,6 @@ fun MainScreen(
                             }
                         }
 
-                        // App Icon Size Slider Card
                         item {
                             SettingsCard(
                                 title = "App Icon Size",
@@ -570,7 +558,6 @@ fun MainScreen(
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    // Card 1: Sidebar Placement
                     item {
                         SettingsCard(
                             title = "Sidebar Placement",
@@ -592,7 +579,6 @@ fun MainScreen(
                         }
                     }
 
-                    // Card 2: Vertical Alignment
                     item {
                         SettingsCard(
                             title = "Vertical Alignment",
@@ -619,7 +605,6 @@ fun MainScreen(
                         }
                     }
 
-                    // Card 3: Tab Display Style
                     item {
                         SettingsCard(
                             title = "Tab Display Style",
@@ -629,8 +614,8 @@ fun MainScreen(
                             Column {
                                 RadioOption(
                                     label = "Heading (Text)",
-                                    isSelected = sidebarDisplayType == "text",
-                                    onClick = { sidebarDisplayType = "text" }
+                                    isSelected = sidebarDisplayType == "heading",
+                                    onClick = { sidebarDisplayType = "heading" }
                                 )
                                 RadioOption(
                                     label = "Icons (Emoji / Badge)",
@@ -641,7 +626,6 @@ fun MainScreen(
                         }
                     }
 
-                    // Card 4: Sidebar Size Slider
                     item {
                         SettingsCard(
                             title = "Sidebar Item Size",
@@ -905,7 +889,6 @@ fun MainScreen(
     }
 }
 
-// Reusable White Card Component Matching Screenshot
 @Composable
 private fun SettingsCard(
     title: String,
@@ -942,14 +925,18 @@ private fun SettingsCard(
                     lineHeight = 16.sp
                 )
             }
-            HorizontalDivider(color = Color(0xFFF3E8FF), thickness = 1.dp)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(Color(0xFFF3E8FF))
+            )
             content()
             Spacer(modifier = Modifier.height(6.dp))
         }
     }
 }
 
-// Custom Radio Button Row Matching Screenshot
 @Composable
 private fun RadioOption(
     label: String,
