@@ -8,6 +8,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
+import android.util.Base64
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -32,13 +33,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.categorydockwidget.R
 import com.example.categorydockwidget.data.AppIconHelper
 import com.example.categorydockwidget.data.AppModel
 import com.example.categorydockwidget.data.AppRepository
@@ -50,6 +51,31 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+
+// Backup data models
+data class CategoryBackupItem(
+    val id: String,
+    val name: String,
+    val packageNames: List<String>,
+    val icon: String?,
+    val galleryBase64: String? = null
+)
+
+data class WidgetFullBackup(
+    val version: Int = 1,
+    val timestamp: Long = System.currentTimeMillis(),
+    val categories: List<CategoryBackupItem>,
+    val sidebarPosition: String,
+    val sidebarAlignment: String,
+    val sidebarDisplayType: String,
+    val sidebarSizeSp: Int,
+    val categoryIconSizeDp: Int,
+    val sidebarFontFamily: String,
+    val unifiedIconStyle: String,
+    val clockEnabled: Boolean,
+    val clockFont: String,
+    val clockSizeSp: Int
+)
 
 class WidgetConfigActivity : ComponentActivity() {
 
@@ -87,7 +113,7 @@ class WidgetConfigActivity : ComponentActivity() {
         categories: List<Category>,
         sidebarPosition: String,
         sidebarAlignment: String,
-        sidebarDisplay: String,
+        sidebarDisplayType: String,
         sidebarSizeSp: Int,
         categoryIconSizeDp: Int,
         sidebarFont: String,
@@ -108,7 +134,7 @@ class WidgetConfigActivity : ComponentActivity() {
             .putString("categories_json", Gson().toJson(categories))
             .putString("sidebar_position", sidebarPosition)
             .putString("sidebar_alignment", sidebarAlignment)
-            .putString("sidebar_display_type", sidebarDisplay)
+            .putString("sidebar_display_type", sidebarDisplayType)
             .putInt("sidebar_icon_size_sp", sidebarSizeSp)
             .putInt("category_icon_size_dp", categoryIconSizeDp)
             .putString("sidebar_font_family", sidebarFont)
@@ -178,6 +204,9 @@ fun MainScreen(
     var selectedMainTab by remember { mutableIntStateOf(1) }
     var editingCategoryId by remember { mutableStateOf<String?>(null) }
 
+    // Dialog flags
+    var showSettingsDialog by remember { mutableStateOf(false) }
+    var showResetConfirmDialog by remember { mutableStateOf(false) }
     var showAddCategoryDialog by remember { mutableStateOf(false) }
     var newCategoryName by remember { mutableStateOf("") }
     var showRenameDialog by remember { mutableStateOf(false) }
@@ -219,8 +248,6 @@ fun MainScreen(
     var sidebarFont by remember {
         mutableStateOf(prefs.getString("sidebar_font_family", "sans-serif") ?: "sans-serif")
     }
-
-    // Only default or icon pack
     var unifiedIconStyle by remember {
         val saved = prefs.getString("unified_icon_style", "default") ?: "default"
         mutableStateOf(if (saved == "white" || saved == "black") "default" else saved)
@@ -266,7 +293,126 @@ fun MainScreen(
         list.distinctBy { it.packageName }
     }
 
-    // Gallery Picker Contract with square center cropping
+    // Backup Export File Picker
+    val exportBackupLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                val backupCategoryItems = categories.map { cat ->
+                    var base64Data: String? = null
+                    if (cat.isGallery && cat.galleryFileName != null) {
+                        val f = File(context.filesDir, "category_icons/${cat.galleryFileName}")
+                        if (f.exists()) {
+                            base64Data = Base64.encodeToString(f.readBytes(), Base64.NO_WRAP)
+                        }
+                    }
+                    CategoryBackupItem(
+                        id = cat.id,
+                        name = cat.name,
+                        packageNames = cat.packageNames,
+                        icon = cat.icon,
+                        galleryBase64 = base64Data
+                    )
+                }
+
+                val backupBundle = WidgetFullBackup(
+                    categories = backupCategoryItems,
+                    sidebarPosition = sidebarPosition,
+                    sidebarAlignment = sidebarAlignment,
+                    sidebarDisplayType = sidebarDisplayType,
+                    sidebarSizeSp = sidebarSizeSp.toInt(),
+                    categoryIconSizeDp = categoryIconSizeDp.toInt(),
+                    sidebarFontFamily = sidebarFont,
+                    unifiedIconStyle = unifiedIconStyle,
+                    clockEnabled = clockEnabled,
+                    clockFont = clockFont,
+                    clockSizeSp = clockSizeSp.toInt()
+                )
+
+                val jsonContent = Gson().toJson(backupBundle)
+                context.contentResolver.openOutputStream(uri)?.use { out ->
+                    out.write(jsonContent.toByteArray(Charsets.UTF_8))
+                }
+                Toast.makeText(context, "Backup exported successfully!", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(context, "Failed to export: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    // Backup Restore File Picker
+    val importBackupLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                val jsonString = context.contentResolver.openInputStream(uri)?.use { input ->
+                    input.bufferedReader().use { it.readText() }
+                }
+
+                if (!jsonString.isNullOrBlank()) {
+                    val backupBundle = Gson().fromJson(jsonString, WidgetFullBackup::class.java)
+                    if (backupBundle != null) {
+                        val iconDir = File(context.filesDir, "category_icons")
+                        if (!iconDir.exists()) iconDir.mkdirs()
+
+                        val restoredCategories = backupBundle.categories.map { item ->
+                            if (!item.galleryBase64.isNullOrBlank() && item.icon?.startsWith("gallery:") == true) {
+                                val fileName = item.icon.removePrefix("gallery:")
+                                val f = File(iconDir, fileName)
+                                val bytes = Base64.decode(item.galleryBase64, Base64.DEFAULT)
+                                f.writeBytes(bytes)
+                            }
+                            Category(
+                                id = item.id,
+                                name = item.name,
+                                packageNames = item.packageNames,
+                                icon = item.icon
+                            )
+                        }
+
+                        categories = restoredCategories
+                        sidebarPosition = backupBundle.sidebarPosition
+                        sidebarAlignment = backupBundle.sidebarAlignment
+                        sidebarDisplayType = backupBundle.sidebarDisplayType
+                        sidebarSizeSp = backupBundle.sidebarSizeSp.toFloat()
+                        categoryIconSizeDp = backupBundle.categoryIconSizeDp.toFloat()
+                        sidebarFont = backupBundle.sidebarFontFamily
+                        unifiedIconStyle = backupBundle.unifiedIconStyle
+                        clockEnabled = backupBundle.clockEnabled
+                        clockFont = backupBundle.clockFont
+                        clockSizeSp = backupBundle.clockSizeSp.toFloat()
+
+                        prefs.edit()
+                            .putString("categories_json", Gson().toJson(restoredCategories))
+                            .putString("sidebar_position", backupBundle.sidebarPosition)
+                            .putString("sidebar_alignment", backupBundle.sidebarAlignment)
+                            .putString("sidebar_display_type", backupBundle.sidebarDisplayType)
+                            .putInt("sidebar_icon_size_sp", backupBundle.sidebarSizeSp)
+                            .putInt("category_icon_size_dp", backupBundle.categoryIconSizeDp)
+                            .putString("sidebar_font_family", backupBundle.sidebarFontFamily)
+                            .putString("unified_icon_style", backupBundle.unifiedIconStyle)
+                            .putBoolean("clock_enabled", backupBundle.clockEnabled)
+                            .putString("clock_font", backupBundle.clockFont)
+                            .putInt("clock_size_sp", backupBundle.clockSizeSp)
+                            .apply()
+
+                        AppIconHelper.clearCache(context)
+                        AppIconHelper.prewarmIcons(context, restoredCategories)
+                        CategoryWidgetProvider.updateAllWidgets(context)
+
+                        showSettingsDialog = false
+                        Toast.makeText(context, "Backup restored successfully!", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Failed to restore: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    // Gallery Picker Contract
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -299,7 +445,6 @@ fun MainScreen(
         }
     }
 
-    // 6 visually distinctive, expressive typefaces
     val fontOptions = listOf(
         "sans-serif" to "Modern Sans (Clean Geometric)",
         "serif" to "Classic Serif (Literary & Editorial)",
@@ -323,6 +468,17 @@ fun MainScreen(
                         fontSize = 22.sp,
                         color = Color(0xFF1E1B2E)
                     )
+                },
+                actions = {
+                    // Top-Right Settings Icon
+                    IconButton(onClick = { showSettingsDialog = true }) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_settings),
+                            contentDescription = "Settings & Backup",
+                            tint = Color(0xFF7C3AED),
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
             )
@@ -428,7 +584,6 @@ fun MainScreen(
                                     .padding(16.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                // Dedicated Badge View that renders gallery image or single-line text
                                 CategoryBadgeView(
                                     category = currentCategory,
                                     size = 54.dp,
@@ -869,7 +1024,7 @@ fun MainScreen(
                 }
             }
 
-            // TAB 2: GENERAL (Only Default & Icon Pack)
+            // TAB 2: GENERAL (Icon Pack Settings)
             if (selectedMainTab == 2) {
                 LazyColumn(
                     modifier = Modifier
@@ -942,28 +1097,6 @@ fun MainScreen(
                                     color = Color(0xFF4B5563),
                                     fontSize = 13.sp
                                 )
-                                Spacer(modifier = Modifier.height(16.dp))
-                                Button(
-                                    onClick = {
-                                        categories = emptyList()
-                                        sidebarPosition = "left"
-                                        sidebarAlignment = "bottom"
-                                        sidebarDisplayType = "icons"
-                                        sidebarSizeSp = 14f
-                                        categoryIconSizeDp = 46f
-                                        sidebarFont = "sans-serif"
-                                        unifiedIconStyle = "default"
-                                        clockEnabled = true
-                                        clockFont = "sans-serif"
-                                        clockSizeSp = 26f
-                                        AppIconHelper.clearCache(context)
-                                        Toast.makeText(context, "Reset completed. Tap Save to apply.", Toast.LENGTH_SHORT).show()
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    Text("Clear All Data & Reset", color = Color.White)
-                                }
                             }
                         }
                     }
@@ -972,6 +1105,134 @@ fun MainScreen(
                 }
             }
         }
+    }
+
+    // TOP-RIGHT SETTINGS & BACKUP DIALOG
+    if (showSettingsDialog) {
+        AlertDialog(
+            onDismissRequest = { showSettingsDialog = false },
+            title = {
+                Text(
+                    text = "Preferences & Backup",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 19.sp,
+                    color = Color(0xFF1E1B2E)
+                )
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = "Backup your entire configuration, categories, assigned apps, and custom icons to a JSON file, or restore them anytime.",
+                        fontSize = 13.sp,
+                        color = Color(0xFF6B7280),
+                        lineHeight = 17.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Backup Button
+                    Button(
+                        onClick = {
+                            exportBackupLauncher.launch("apps_widget_backup_${System.currentTimeMillis()}.json")
+                        },
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7C3AED))
+                    ) {
+                        Text("💾 Backup Configuration to File", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Restore Button
+                    OutlinedButton(
+                        onClick = {
+                            importBackupLauncher.launch(arrayOf("application/json", "text/*", "*/*"))
+                        },
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.5.dp, Color(0xFF7C3AED))
+                    ) {
+                        Text("📂 Restore Configuration from File", color = Color(0xFF7C3AED), fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+                    HorizontalDivider(color = Color(0xFFF3E8FF))
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Reset Button
+                    Button(
+                        onClick = {
+                            showResetConfirmDialog = true
+                        },
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                    ) {
+                        Text("⚠️ Reset Everything to Defaults", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showSettingsDialog = false }) {
+                    Text("Close", color = Color(0xFF7C3AED), fontWeight = FontWeight.SemiBold)
+                }
+            },
+            containerColor = Color.White
+        )
+    }
+
+    // RESET CONFIRMATION DIALOG
+    if (showResetConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showResetConfirmDialog = false },
+            title = {
+                Text("Confirm Reset", fontWeight = FontWeight.Bold, color = Color(0xFFEF4444))
+            },
+            text = {
+                Text(
+                    text = "Are you sure you want to clear all categories, assigned apps, custom gallery icons, and reset all layout settings to default?",
+                    color = Color(0xFF374151),
+                    fontSize = 14.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        categories = emptyList()
+                        sidebarPosition = "left"
+                        sidebarAlignment = "bottom"
+                        sidebarDisplayType = "icons"
+                        sidebarSizeSp = 14f
+                        categoryIconSizeDp = 46f
+                        sidebarFont = "sans-serif"
+                        unifiedIconStyle = "default"
+                        clockEnabled = true
+                        clockFont = "sans-serif"
+                        clockSizeSp = 26f
+
+                        prefs.edit().clear().apply()
+                        val iconDir = File(context.filesDir, "category_icons")
+                        if (iconDir.exists()) iconDir.deleteRecursively()
+                        AppIconHelper.clearCache(context)
+                        CategoryWidgetProvider.updateAllWidgets(context)
+
+                        showResetConfirmDialog = false
+                        showSettingsDialog = false
+                        Toast.makeText(context, "Reset complete! Everything restored to default.", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                ) {
+                    Text("Yes, Reset All", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetConfirmDialog = false }) {
+                    Text("Cancel", color = Color.Gray)
+                }
+            },
+            containerColor = Color.White
+        )
     }
 
     // Sidebar Font Dialog
@@ -1171,7 +1432,7 @@ fun MainScreen(
         )
     }
 
-    // Category Icon Dialog (Gallery Picker + Curated Symbols, no bottom letter input box)
+    // Category Icon Dialog
     if (showIconDialog) {
         val currentCategory = categories.firstOrNull { it.id == editingCategoryId }
 
@@ -1192,7 +1453,6 @@ fun MainScreen(
             title = { Text("Category Icon", fontWeight = FontWeight.Bold, color = Color(0xFF1E1B2E)) },
             text = {
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    // Upload from Gallery Button
                     Button(
                         onClick = { galleryLauncher.launch("image/*") },
                         modifier = Modifier.fillMaxWidth().height(48.dp),
