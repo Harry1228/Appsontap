@@ -2618,7 +2618,7 @@ fun AppItemRow(
             Text("Icon ✎", fontSize = 11.sp, color = theme.textSecondary, fontWeight = FontWeight.Bold)
         }
 
-        Checkbox(
+Checkbox(
             checked = isChecked,
             onCheckedChange = null,
             colors = CheckboxDefaults.colors(
