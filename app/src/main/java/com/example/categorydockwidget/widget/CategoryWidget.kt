@@ -64,7 +64,6 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             }
         }
 
-        // Renders text badges and symbols dynamically according to the sidebar size slider
         private fun createTextBadgeBitmap(
             text: String,
             fontKey: String,
@@ -79,14 +78,12 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = if (isSelected) Color.WHITE else Color.parseColor("#B0B0B8")
                 typeface = resolveTypeface(fontKey)
-                textAlign = Paint.Align.Center
+                textAlign = Paint.Align.CENTER
             }
 
-            // Apply size slider directly
             var computedSize = sizeSp * 2.1f
             paint.textSize = computedSize
 
-            // Ensure single-line text fits neatly inside pill bounds
             val textWidth = paint.measureText(text)
             val maxAvailableWidth = width * 0.82f
             if (textWidth > maxAvailableWidth && textWidth > 0f) {
@@ -99,7 +96,6 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             return bitmap
         }
 
-        // Renders gallery icons scaled smoothly according to the sidebar size slider
         private fun createGalleryIconBitmap(
             context: Context,
             fileName: String,
@@ -135,7 +131,6 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                 val sidebarSizeSp = prefs.getInt("sidebar_icon_size_sp", 14)
                 val sidebarFont = prefs.getString("sidebar_font_family", "sans-serif") ?: "sans-serif"
 
-                // Clock preferences
                 val clockEnabled = prefs.getBoolean("clock_enabled", true)
                 val clockFont = prefs.getString("clock_font", "sans-serif") ?: "sans-serif"
                 val clockSizeSp = prefs.getInt("clock_size_sp", 26)
