@@ -29,6 +29,8 @@ class AppGridFactory(
 
     private var apps: List<String> = emptyList()
     private var iconSizeDp: Int = 46
+    private var colSpacingDp: Int = 6
+    private var rowSpacingDp: Int = 8
 
     override fun onCreate() {
         loadData()
@@ -44,17 +46,15 @@ class AppGridFactory(
             val rawJson = prefs.getString("categories_json", null)
             val selectedId = prefs.getString("selected_category_$appWidgetId", null)
             iconSizeDp = prefs.getInt("category_icon_size_dp", 46)
+            colSpacingDp = prefs.getInt("grid_col_spacing", 6)
+            rowSpacingDp = prefs.getInt("grid_row_spacing", 8)
 
             val categories: List<Category> = if (rawJson != null) {
                 try {
                     val type = object : TypeToken<List<Category>>() {}.type
                     Gson().fromJson(rawJson, type) ?: emptyList()
-                } catch (_: Exception) {
-                    emptyList()
-                }
-            } else {
-                emptyList()
-            }
+                } catch (_: Exception) { emptyList() }
+            } else emptyList()
 
             val active = categories.firstOrNull { it.id == selectedId } ?: categories.firstOrNull()
             apps = active?.packageNames ?: emptyList()
@@ -80,11 +80,18 @@ class AppGridFactory(
                 views.setImageViewBitmap(R.id.grid_app_icon, bitmap)
             }
 
+            val density = context.resources.displayMetrics.density
+
+            // Dynamic Row & Column Spacing applied to item container
+            val hPadPx = ((colSpacingDp / 2f) * density).toInt()
+            val vPadPx = ((rowSpacingDp / 2f) * density).toInt()
+            views.setViewPadding(R.id.grid_item_container, hPadPx, vPadPx, hPadPx, vPadPx)
+
+            // Scaled icon dimension inside cell
             val maxDimDp = 56
             val padDp = ((maxDimDp - iconSizeDp).coerceAtLeast(0) / 2)
-            val density = context.resources.displayMetrics.density
-            val padPx = (padDp * density).toInt()
-            views.setViewPadding(R.id.grid_app_icon, padPx, padPx, padPx, padPx)
+            val iconPadPx = (padDp * density).toInt()
+            views.setViewPadding(R.id.grid_app_icon, iconPadPx, iconPadPx, iconPadPx, iconPadPx)
 
             val fillInIntent = Intent().apply {
                 putExtra(CategoryWidgetProvider.EXTRA_PACKAGE_NAME, pkg)

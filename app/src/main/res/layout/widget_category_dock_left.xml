@@ -11,33 +11,86 @@
 
     <include layout="@layout/widget_sidebar" />
 
-    <ViewFlipper
-        android:id="@+id/app_view_flipper"
+    <!-- APPS AREA CONTAINER (Supports Top, Middle, Bottom Alignment) -->
+    <LinearLayout
+        android:id="@+id/apps_outer_container"
         android:layout_width="0dp"
         android:layout_height="match_parent"
         android:layout_marginStart="4dp"
         android:layout_weight="1"
-        android:inAnimation="@android:anim/fade_in"
-        android:outAnimation="@android:anim/fade_out">
+        android:orientation="vertical">
 
-        <GridView
-            android:id="@+id/app_grid_view_0"
+        <ViewFlipper
+            android:id="@+id/app_view_flipper"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:gravity="center"
-            android:horizontalSpacing="4dp"
-            android:numColumns="5"
-            android:stretchMode="columnWidth"
-            android:verticalSpacing="4dp" />
+            android:inAnimation="@android:anim/fade_in"
+            android:outAnimation="@android:anim/fade_out">
 
-        <GridView
-            android:id="@+id/app_grid_view_1"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:gravity="center"
-            android:horizontalSpacing="4dp"
-            android:numColumns="5"
-            android:stretchMode="columnWidth"
-            android:verticalSpacing="4dp" />
-    </ViewFlipper>
+            <!-- 3 Columns (Slots 0 & 1) -->
+            <GridView
+                android:id="@+id/app_grid_view_3_0"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:numColumns="3"
+                android:stretchMode="columnWidth" />
+            <GridView
+                android:id="@+id/app_grid_view_3_1"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:numColumns="3"
+                android:stretchMode="columnWidth" />
+
+            <!-- 4 Columns (Slots 2 & 3) -->
+            <GridView
+                android:id="@+id/app_grid_view_4_0"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:numColumns="4"
+                android:stretchMode="columnWidth" />
+            <GridView
+                android:id="@+id/app_grid_view_4_1"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:numColumns="4"
+                android:stretchMode="columnWidth" />
+
+            <!-- 5 Columns (Slots 4 & 5 - Default) -->
+            <GridView
+                android:id="@+id/app_grid_view_5_0"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:numColumns="5"
+                android:stretchMode="columnWidth" />
+            <GridView
+                android:id="@+id/app_grid_view_5_1"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:numColumns="5"
+                android:stretchMode="columnWidth" />
+
+            <!-- 6 Columns (Slots 6 & 7) -->
+            <GridView
+                android:id="@+id/app_grid_view_6_0"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:numColumns="6"
+                android:stretchMode="columnWidth" />
+            <GridView
+                android:id="@+id/app_grid_view_6_1"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:numColumns="6"
+                android:stretchMode="columnWidth" />
+
+        </ViewFlipper>
+    </LinearLayout>
 </LinearLayout>

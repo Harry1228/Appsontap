@@ -42,7 +42,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -67,7 +66,7 @@ data class CategoryBackupItem(
 )
 
 data class WidgetFullBackup(
-    val version: Int = 2,
+    val version: Int = 3,
     val timestamp: Long = System.currentTimeMillis(),
     val categories: List<CategoryBackupItem>,
     val sidebarPosition: String,
@@ -77,12 +76,17 @@ data class WidgetFullBackup(
     val sidebarIconSizeSp: Int = 28,
     val sidebarSizeSp: Int = 14,
     val categoryIconSizeDp: Int,
+    val gridColumns: Int = 5,
+    val gridRowSpacing: Int = 8,
+    val gridColSpacing: Int = 6,
+    val appsAlignment: String = "top",
     val sidebarFontFamily: String,
     val unifiedIconStyle: String,
     val clockEnabled: Boolean,
     val clockFont: String,
     val clockSizeSp: Int,
-    val animationStyle: String = "fade"
+    val animationStyle: String = "fade",
+    val hapticsEnabled: Boolean = true
 )
 
 data class NovaThemePalette(
@@ -159,8 +163,8 @@ class WidgetConfigActivity : ComponentActivity() {
                             isDarkTheme = dark
                             prefs.edit().putBoolean("app_theme_dark", dark).apply()
                         },
-                        onSave = { updatedCategories, pos, align, display, sidebarTextSp, sidebarIconSp, appDp, font, unifiedStyle, clockEnabled, clockFont, clockSize, animStyle ->
-                            saveAndSync(updatedCategories, pos, align, display, sidebarTextSp, sidebarIconSp, appDp, font, unifiedStyle, clockEnabled, clockFont, clockSize, animStyle, appWidgetId)
+                        onSave = { updatedCategories, pos, align, display, sidebarTextSp, sidebarIconSp, appDp, cols, rowSpacing, colSpacing, appsAlign, font, unifiedStyle, clockEnabled, clockFont, clockSize ->
+                            saveAndSync(updatedCategories, pos, align, display, sidebarTextSp, sidebarIconSp, appDp, cols, rowSpacing, colSpacing, appsAlign, font, unifiedStyle, clockEnabled, clockFont, clockSize, appWidgetId)
                         }
                     )
                 }
@@ -176,12 +180,15 @@ class WidgetConfigActivity : ComponentActivity() {
         sidebarTextSizeSp: Int,
         sidebarIconSizeSp: Int,
         categoryIconSizeDp: Int,
+        gridColumns: Int,
+        gridRowSpacing: Int,
+        gridColSpacing: Int,
+        appsAlignment: String,
         sidebarFont: String,
         unifiedIconStyle: String,
         clockEnabled: Boolean,
         clockFont: String,
         clockSizeSp: Int,
-        animationStyle: String,
         appWidgetId: Int
     ) {
         val prefs = getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
@@ -199,12 +206,15 @@ class WidgetConfigActivity : ComponentActivity() {
             .putInt("sidebar_text_size_sp", sidebarTextSizeSp)
             .putInt("sidebar_icon_size_sp", sidebarIconSizeSp)
             .putInt("category_icon_size_dp", categoryIconSizeDp)
+            .putInt("grid_columns", gridColumns)
+            .putInt("grid_row_spacing", gridRowSpacing)
+            .putInt("grid_col_spacing", gridColSpacing)
+            .putString("apps_alignment", appsAlignment)
             .putString("sidebar_font_family", sidebarFont)
             .putString("unified_icon_style", unifiedIconStyle)
             .putBoolean("clock_enabled", clockEnabled)
             .putString("clock_font", clockFont)
             .putInt("clock_size_sp", clockSizeSp)
-            .putString("animation_style", animationStyle)
             .apply()
 
         AppIconHelper.prewarmIcons(this, categories)
@@ -218,7 +228,7 @@ class WidgetConfigActivity : ComponentActivity() {
     }
 }
 
-enum class NovaScreen { HOME, CATEGORIES, SIDEBAR, ANIMATION, ICONS, BACKUP }
+enum class NovaScreen { HOME, CATEGORIES, APP_GRID, SIDEBAR, ANIMATION, ICONS, BACKUP }
 
 @Composable
 fun CategoryBadgeView(category: Category, size: Dp, theme: NovaThemePalette, modifier: Modifier = Modifier) {
@@ -263,7 +273,7 @@ fun CategoryBadgeView(category: Category, size: Dp, theme: NovaThemePalette, mod
 fun MainScreen(
     theme: NovaThemePalette,
     onToggleTheme: (Boolean) -> Unit,
-    onSave: (List<Category>, String, String, String, Int, Int, Int, String, String, Boolean, String, Int, String) -> Unit
+    onSave: (List<Category>, String, String, String, Int, Int, Int, Int, Int, Int, String, String, String, Boolean, String, Int) -> Unit
 ) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE) }
@@ -305,6 +315,12 @@ fun MainScreen(
     var sidebarTextSizeSp by remember { mutableFloatStateOf(prefs.getInt("sidebar_text_size_sp", 14).toFloat()) }
     var sidebarIconSizeSp by remember { mutableFloatStateOf(prefs.getInt("sidebar_icon_size_sp", 28).toFloat()) }
     var categoryIconSizeDp by remember { mutableFloatStateOf(prefs.getInt("category_icon_size_dp", 46).toFloat()) }
+
+    // Grid Options: Columns, Spacing, and Alignment
+    var gridColumns by remember { mutableIntStateOf(prefs.getInt("grid_columns", 5)) }
+    var gridRowSpacing by remember { mutableFloatStateOf(prefs.getInt("grid_row_spacing", 8).toFloat()) }
+    var gridColSpacing by remember { mutableFloatStateOf(prefs.getInt("grid_col_spacing", 6).toFloat()) }
+    var appsAlignment by remember { mutableStateOf(prefs.getString("apps_alignment", "top") ?: "top") }
 
     var sidebarFont by remember { mutableStateOf(prefs.getString("sidebar_font_family", "sans-serif") ?: "sans-serif") }
     var unifiedIconStyle by remember {
@@ -368,7 +384,6 @@ fun MainScreen(
             }
         }
 
-        // Ordered by position inside packageNames first, then alphabetical for unselected
         val currentOrder = currentCategory?.packageNames ?: emptyList()
         list.sortedWith(
             compareBy<AppModel> { app ->
@@ -499,12 +514,17 @@ fun MainScreen(
                     sidebarIconSizeSp = sidebarIconSizeSp.toInt(),
                     sidebarSizeSp = sidebarTextSizeSp.toInt(),
                     categoryIconSizeDp = categoryIconSizeDp.toInt(),
+                    gridColumns = gridColumns,
+                    gridRowSpacing = gridRowSpacing.toInt(),
+                    gridColSpacing = gridColSpacing.toInt(),
+                    appsAlignment = appsAlignment,
                     sidebarFontFamily = sidebarFont,
                     unifiedIconStyle = unifiedIconStyle,
                     clockEnabled = clockEnabled,
                     clockFont = clockFont,
                     clockSizeSp = clockSizeSp.toInt(),
-                    animationStyle = animationStyle
+                    animationStyle = animationStyle,
+                    hapticsEnabled = hapticsEnabled
                 )
 
                 val jsonContent = Gson().toJson(backupBundle)
@@ -556,12 +576,18 @@ fun MainScreen(
                         sidebarIconSizeSp = (if (backupBundle.sidebarIconSizeSp > 0) backupBundle.sidebarIconSizeSp else backupBundle.sidebarSizeSp).toFloat()
 
                         categoryIconSizeDp = backupBundle.categoryIconSizeDp.toFloat()
+                        gridColumns = backupBundle.gridColumns.takeIf { it in 3..6 } ?: 5
+                        gridRowSpacing = backupBundle.gridRowSpacing.toFloat().takeIf { it in 0f..30f } ?: 8f
+                        gridColSpacing = backupBundle.gridColSpacing.toFloat().takeIf { it in 0f..30f } ?: 6f
+                        appsAlignment = backupBundle.appsAlignment.takeIf { it.isNotBlank() } ?: "top"
+
                         sidebarFont = backupBundle.sidebarFontFamily
                         unifiedIconStyle = backupBundle.unifiedIconStyle
                         clockEnabled = backupBundle.clockEnabled
                         clockFont = backupBundle.clockFont
                         clockSizeSp = backupBundle.clockSizeSp.toFloat()
                         animationStyle = backupBundle.animationStyle
+                        hapticsEnabled = backupBundle.hapticsEnabled
 
                         prefs.edit()
                             .putString("categories_json", Gson().toJson(restoredCategories))
@@ -571,12 +597,17 @@ fun MainScreen(
                             .putInt("sidebar_text_size_sp", sidebarTextSizeSp.toInt())
                             .putInt("sidebar_icon_size_sp", sidebarIconSizeSp.toInt())
                             .putInt("category_icon_size_dp", backupBundle.categoryIconSizeDp)
+                            .putInt("grid_columns", gridColumns)
+                            .putInt("grid_row_spacing", gridRowSpacing.toInt())
+                            .putInt("grid_col_spacing", gridColSpacing.toInt())
+                            .putString("apps_alignment", appsAlignment)
                             .putString("sidebar_font_family", backupBundle.sidebarFontFamily)
                             .putString("unified_icon_style", backupBundle.unifiedIconStyle)
                             .putBoolean("clock_enabled", backupBundle.clockEnabled)
                             .putString("clock_font", backupBundle.clockFont)
                             .putInt("clock_size_sp", backupBundle.clockSizeSp)
                             .putString("animation_style", backupBundle.animationStyle)
+                            .putBoolean("haptics_enabled", hapticsEnabled)
                             .apply()
 
                         AppIconHelper.clearCache(context)
@@ -584,7 +615,6 @@ fun MainScreen(
                         CategoryWidgetProvider.updateAllWidgets(context)
 
                         showSettingsDialog = false
-                        CategoryWidgetProvider.performHaptic(context)
                         Toast.makeText(context, "Backup restored successfully!", Toast.LENGTH_SHORT).show()
                     }
                 }
@@ -616,7 +646,6 @@ fun MainScreen(
                         if (it.id == editingCategoryId) it.copy(icon = "gallery:$fileName") else it
                     }
                     showIconDialog = false
-                    CategoryWidgetProvider.performHaptic(context)
                     Toast.makeText(context, "Gallery Icon Applied!", Toast.LENGTH_SHORT).show()
                 }
             } catch (_: Exception) {}
@@ -638,6 +667,7 @@ fun MainScreen(
 
     val menuItems = listOf(
         Triple("Categories", "Configure category tabs, app list, and shortcuts", NovaScreen.CATEGORIES),
+        Triple("App grid", "Columns, row/column spacing, and apps alignment", NovaScreen.APP_GRID),
         Triple("Side bar", "Dock position, clock settings, alignment, and scale", NovaScreen.SIDEBAR),
         Triple("Animation", "Transition styles: fade, slide, zoom, and snappy", NovaScreen.ANIMATION),
         Triple("Icons", "App icon packs, custom overrides, and default styling", NovaScreen.ICONS),
@@ -685,6 +715,7 @@ fun MainScreen(
                         val title = when {
                             editingCategoryId != null -> currentCategory?.name ?: "Category"
                             currentScreen == NovaScreen.CATEGORIES -> "Categories"
+                            currentScreen == NovaScreen.APP_GRID -> "App grid"
                             currentScreen == NovaScreen.SIDEBAR -> "Side bar"
                             currentScreen == NovaScreen.ANIMATION -> "Animation"
                             currentScreen == NovaScreen.ICONS -> "Icons"
@@ -727,7 +758,7 @@ fun MainScreen(
                 color = theme.bottomBarBg,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .navigationBarsPadding() // Solves navbar overlap
+                    .navigationBarsPadding()
             ) {
                 Box(
                     modifier = Modifier
@@ -750,12 +781,15 @@ fun MainScreen(
                                     sidebarTextSizeSp.toInt(),
                                     sidebarIconSizeSp.toInt(),
                                     categoryIconSizeDp.toInt(),
+                                    gridColumns,
+                                    gridRowSpacing.toInt(),
+                                    gridColSpacing.toInt(),
+                                    appsAlignment,
                                     sidebarFont,
                                     unifiedIconStyle,
                                     clockEnabled,
                                     clockFont,
-                                    clockSizeSp.toInt(),
-                                    animationStyle
+                                    clockSizeSp.toInt()
                                 )
                             }
                             .padding(vertical = 14.dp),
@@ -987,7 +1021,6 @@ fun MainScreen(
                     }
                 }
 
-                // CATEGORIES SUBPAGE (WITH SWAP UP/DOWN BUTTONS)
                 currentScreen == NovaScreen.CATEGORIES -> {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize().padding(16.dp),
@@ -1010,35 +1043,6 @@ fun MainScreen(
                                 border = BorderStroke(1.dp, theme.cardBorder)
                             ) {
                                 Text("+ Add Category", color = theme.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                            }
-                        }
-
-                        item {
-                            NovaSettingsCard(
-                                title = "App Icon Size",
-                                subtitle = "Adjust how large app icons appear inside the widget grid.",
-                                theme = theme
-                            ) {
-                                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text("Dimension", fontSize = 14.sp, color = theme.textPrimary, fontWeight = FontWeight.Medium)
-                                        Text("${categoryIconSizeDp.toInt()} dp", fontSize = 14.sp, color = theme.textSecondary, fontWeight = FontWeight.Bold)
-                                    }
-                                    Slider(
-                                        value = categoryIconSizeDp,
-                                        onValueChange = { categoryIconSizeDp = it },
-                                        valueRange = 32f..54f,
-                                        colors = SliderDefaults.colors(
-                                            thumbColor = theme.textPrimary,
-                                            activeTrackColor = theme.textPrimary,
-                                            inactiveTrackColor = theme.cardBorder
-                                        )
-                                    )
-                                }
                             }
                         }
 
@@ -1088,7 +1092,6 @@ fun MainScreen(
                                         )
                                     }
 
-                                    // Category Swap Reordering Buttons
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -1132,6 +1135,141 @@ fun MainScreen(
                                             modifier = Modifier.padding(start = 4.dp)
                                         )
                                     }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 2. APP GRID SUBPAGE: COLUMNS, SPACING & ALIGNMENT
+                currentScreen == NovaScreen.APP_GRID -> {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize().padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        item {
+                            NovaSettingsCard(
+                                title = "Grid Columns",
+                                subtitle = "Choose how many app columns are displayed in the widget.",
+                                theme = theme
+                            ) {
+                                Column {
+                                    listOf(3, 4, 5, 6).forEach { cols ->
+                                        NovaRadioOption(
+                                            label = "$cols Columns",
+                                            isSelected = gridColumns == cols,
+                                            theme = theme,
+                                            onClick = {
+                                                CategoryWidgetProvider.performHaptic(context)
+                                                gridColumns = cols
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        item {
+                            NovaSettingsCard(
+                                title = "Apps Alignment",
+                                subtitle = "Position the app grid at the top, middle, or bottom of the widget.",
+                                theme = theme
+                            ) {
+                                Column {
+                                    listOf(
+                                        "top" to "Top (Align to top)",
+                                        "center" to "Middle (Center vertically)",
+                                        "bottom" to "Bottom (Align to bottom)"
+                                    ).forEach { (alignKey, label) ->
+                                        NovaRadioOption(
+                                            label = label,
+                                            isSelected = appsAlignment == alignKey,
+                                            theme = theme,
+                                            onClick = {
+                                                CategoryWidgetProvider.performHaptic(context)
+                                                appsAlignment = alignKey
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        item {
+                            NovaSettingsCard(
+                                title = "Row & Column Spacing",
+                                subtitle = "Independently adjust horizontal and vertical gaps between apps.",
+                                theme = theme
+                            ) {
+                                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("Row Spacing (Vertical)", fontSize = 14.sp, color = theme.textPrimary, fontWeight = FontWeight.Medium)
+                                        Text("${gridRowSpacing.toInt()} dp", fontSize = 14.sp, color = theme.textSecondary, fontWeight = FontWeight.Bold)
+                                    }
+                                    Slider(
+                                        value = gridRowSpacing,
+                                        onValueChange = { gridRowSpacing = it },
+                                        valueRange = 0f..30f,
+                                        colors = SliderDefaults.colors(
+                                            thumbColor = theme.textPrimary,
+                                            activeTrackColor = theme.textPrimary,
+                                            inactiveTrackColor = theme.cardBorder
+                                        )
+                                    )
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("Column Spacing (Horizontal)", fontSize = 14.sp, color = theme.textPrimary, fontWeight = FontWeight.Medium)
+                                        Text("${gridColSpacing.toInt()} dp", fontSize = 14.sp, color = theme.textSecondary, fontWeight = FontWeight.Bold)
+                                    }
+                                    Slider(
+                                        value = gridColSpacing,
+                                        onValueChange = { gridColSpacing = it },
+                                        valueRange = 0f..30f,
+                                        colors = SliderDefaults.colors(
+                                            thumbColor = theme.textPrimary,
+                                            activeTrackColor = theme.textPrimary,
+                                            inactiveTrackColor = theme.cardBorder
+                                        )
+                                    )
+                                }
+                            }
+                        }
+
+                        item {
+                            NovaSettingsCard(
+                                title = "App Icon Size",
+                                subtitle = "Adjust how large app icons appear inside the cells.",
+                                theme = theme
+                            ) {
+                                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("Icon Scale", fontSize = 14.sp, color = theme.textPrimary, fontWeight = FontWeight.Medium)
+                                        Text("${categoryIconSizeDp.toInt()} dp", fontSize = 14.sp, color = theme.textSecondary, fontWeight = FontWeight.Bold)
+                                    }
+                                    Slider(
+                                        value = categoryIconSizeDp,
+                                        onValueChange = { categoryIconSizeDp = it },
+                                        valueRange = 32f..54f,
+                                        colors = SliderDefaults.colors(
+                                            thumbColor = theme.textPrimary,
+                                            activeTrackColor = theme.textPrimary,
+                                            inactiveTrackColor = theme.cardBorder
+                                        )
+                                    )
                                 }
                             }
                         }
@@ -1581,6 +1719,7 @@ fun MainScreen(
                                     subtitle = subtitle,
                                     type = when (screen) {
                                         NovaScreen.CATEGORIES -> IconType.CATEGORIES
+                                        NovaScreen.APP_GRID -> IconType.APP_GRID
                                         NovaScreen.SIDEBAR -> IconType.SIDEBAR
                                         NovaScreen.ANIMATION -> IconType.ANIMATION
                                         NovaScreen.ICONS -> IconType.ICONS
@@ -1645,7 +1784,6 @@ fun MainScreen(
                     HorizontalDivider(color = theme.divider)
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    // Haptics Toggle
                     Text(
                         text = "Haptic Feedback",
                         fontSize = 14.sp,
@@ -1737,6 +1875,10 @@ fun MainScreen(
                         sidebarTextSizeSp = 14f
                         sidebarIconSizeSp = 28f
                         categoryIconSizeDp = 46f
+                        gridColumns = 5
+                        gridRowSpacing = 8f
+                        gridColSpacing = 6f
+                        appsAlignment = "top"
                         sidebarFont = "sans-serif"
                         unifiedIconStyle = "default"
                         clockEnabled = true
@@ -2267,6 +2409,7 @@ fun BasicTextFieldWithPlaceholder(
 
 enum class IconType {
     CATEGORIES,
+    APP_GRID,
     SIDEBAR,
     ANIMATION,
     ICONS,
@@ -2276,7 +2419,6 @@ enum class IconType {
     CHECK
 }
 
-// 4. Authentic 6-Tooth Mechanical Setting Gear Icon
 @Composable
 fun NovaOutlineIcon(type: IconType, tint: Color, size: Dp) {
     Canvas(modifier = Modifier.size(size)) {
@@ -2291,6 +2433,23 @@ fun NovaOutlineIcon(type: IconType, tint: Color, size: Dp) {
                 drawRoundRect(tint, Offset(w * 0.54f, h * 0.08f), Size(s, s), CornerRadius(4f), stroke)
                 drawRoundRect(tint, Offset(w * 0.08f, h * 0.54f), Size(s, s), CornerRadius(4f), stroke)
                 drawRoundRect(tint, Offset(w * 0.54f, h * 0.54f), Size(s, s), CornerRadius(4f), stroke)
+            }
+            IconType.APP_GRID -> {
+                val s = w * 0.22f
+                val gap = w * 0.07f
+                val x0 = w * 0.11f
+                val y0 = h * 0.11f
+                for (r in 0..2) {
+                    for (c in 0..2) {
+                        drawRoundRect(
+                            tint,
+                            Offset(x0 + c * (s + gap), y0 + r * (s + gap)),
+                            Size(s, s),
+                            CornerRadius(3f),
+                            stroke
+                        )
+                    }
+                }
             }
             IconType.SIDEBAR -> {
                 drawRoundRect(tint, Offset(w * 0.1f, h * 0.1f), Size(w * 0.8f, h * 0.8f), CornerRadius(8f), stroke)
@@ -2354,7 +2513,6 @@ fun NovaOutlineIcon(type: IconType, tint: Color, size: Dp) {
     }
 }
 
-// 3. App Item Row with Reordering Arrows (▲ and ▼)
 @Composable
 fun AppItemRow(
     app: AppModel,
@@ -2438,7 +2596,6 @@ fun AppItemRow(
             )
         }
 
-        // App Grid Swap/Reorder Controls (Up/Down)
         if (isChecked && orderIndex != -1) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (orderIndex > 0) {

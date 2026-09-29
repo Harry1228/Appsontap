@@ -12,8 +12,10 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
+import android.media.AudioAttributes
 import android.net.Uri
 import android.os.Build
+import android.os.VibrationAttributes
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -30,6 +32,7 @@ import com.example.categorydockwidget.data.Category
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import java.io.File
+import kotlin.math.ceil
 
 class CategoryWidgetProvider : AppWidgetProvider() {
 
@@ -53,23 +56,59 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             R.id.cat_icon_3, R.id.cat_icon_4, R.id.cat_icon_5
         )
 
+        // Robust cross-OEM tactile vibration
         fun performHaptic(context: Context) {
             val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
             if (!prefs.getBoolean("haptics_enabled", true)) return
             try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    val manager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
-                    manager?.defaultVibrator?.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK))
+                val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    val vm = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
+                    vm?.defaultVibrator
                 } else {
                     @Suppress("DEPRECATION")
-                    val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        vibrator?.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK))
+                    context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+                } ?: return
+
+                if (!vibrator.hasVibrator()) return
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    val effect = VibrationEffect.createOneShot(35L, VibrationEffect.DEFAULT_AMPLITUDE)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        val attrs = VibrationAttributes.Builder()
+                            .setUsage(VibrationAttributes.USAGE_TOUCH)
+                            .build()
+                        vibrator.vibrate(effect, attrs)
                     } else {
-                        vibrator?.vibrate(20L)
+                        val audioAttrs = AudioAttributes.Builder()
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                            .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                            .build()
+                        vibrator.vibrate(effect, audioAttrs)
                     }
+                } else {
+                    @Suppress("DEPRECATION")
+                    vibrator.vibrate(35L)
                 }
             } catch (_: Exception) {}
+        }
+
+        fun getGridId(cols: Int, slot: Int): Int {
+            return when (cols) {
+                3 -> if (slot == 0) R.id.app_grid_view_3_0 else R.id.app_grid_view_3_1
+                4 -> if (slot == 0) R.id.app_grid_view_4_0 else R.id.app_grid_view_4_1
+                6 -> if (slot == 0) R.id.app_grid_view_6_0 else R.id.app_grid_view_6_1
+                else -> if (slot == 0) R.id.app_grid_view_5_0 else R.id.app_grid_view_5_1
+            }
+        }
+
+        fun getFlipperChildIndex(cols: Int, slot: Int): Int {
+            val base = when (cols) {
+                3 -> 0
+                4 -> 2
+                6 -> 6
+                else -> 4
+            }
+            return base + (if (slot == 0) 0 else 1)
         }
 
         private fun resolveTypeface(fontKey: String): Typeface {
@@ -143,19 +182,8 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             }
         }
 
-        fun getLayoutRes(context: Context, sidebarPosition: String, animStyle: String): Int {
-            val isRight = sidebarPosition == "right"
-            val layoutName = when (animStyle) {
-                "slide_h" -> if (isRight) "widget_category_dock_slide_h" else "widget_category_dock_left_slide_h"
-                "slide_v" -> if (isRight) "widget_category_dock_slide_v" else "widget_category_dock_left_slide_v"
-                "zoom" -> if (isRight) "widget_category_dock_zoom" else "widget_category_dock_left_zoom"
-                "none" -> if (isRight) "widget_category_dock_none" else "widget_category_dock_left_none"
-                else -> if (isRight) "widget_category_dock" else "widget_category_dock_left"
-            }
-            val id = context.resources.getIdentifier(layoutName, "layout", context.packageName)
-            return if (id != 0) id else {
-                if (isRight) R.layout.widget_category_dock else R.layout.widget_category_dock_left
-            }
+        fun getLayoutRes(sidebarPosition: String): Int {
+            return if (sidebarPosition == "right") R.layout.widget_category_dock else R.layout.widget_category_dock_left
         }
 
         fun switchCategorySeamless(
@@ -174,7 +202,10 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                 .putBoolean("hide_apps_$appWidgetId", false)
                 .apply()
 
-            val nextGridId = if (nextSlot == 0) R.id.app_grid_view_0 else R.id.app_grid_view_1
+            val gridCols = prefs.getInt("grid_columns", 5)
+            val nextGridId = getGridId(gridCols, nextSlot)
+            val flipperIndex = getFlipperChildIndex(gridCols, nextSlot)
+
             val rawJson = prefs.getString("categories_json", null)
             val categories: List<Category> = if (rawJson != null) {
                 try {
@@ -184,11 +215,9 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             } else emptyList()
 
             val sidebarPosition = prefs.getString("sidebar_position", "left") ?: "left"
-            val animStyle = prefs.getString("animation_style", "fade") ?: "fade"
-            val layoutRes = getLayoutRes(context, sidebarPosition, animStyle)
-
+            val layoutRes = getLayoutRes(sidebarPosition)
             val partialViews = RemoteViews(context.packageName, layoutRes)
-            partialViews.setViewVisibility(R.id.app_view_flipper, View.VISIBLE)
+            partialViews.setViewVisibility(R.id.apps_outer_container, View.VISIBLE)
 
             for (j in CAT_CONTAINER_IDS.indices) {
                 if (j < categories.size) {
@@ -200,8 +229,32 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                 }
             }
 
+            // Apply dynamic top/middle/bottom alignment
+            val activeCat = categories.firstOrNull { it.id == newCatId }
+            val appsAlignment = prefs.getString("apps_alignment", "top") ?: "top"
+            val rowSpacingDp = prefs.getInt("grid_row_spacing", 8)
+            val iconSizeDp = prefs.getInt("category_icon_size_dp", 46)
+
+            val density = context.resources.displayMetrics.density
+            val options = appWidgetManager.getAppWidgetOptions(appWidgetId)
+            val widgetMinHeightDp = options?.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 220) ?: 220
+
+            val appCount = activeCat?.packageNames?.size ?: 0
+            val numRows = ceil(appCount.toDouble() / gridCols).toInt().coerceAtLeast(1)
+            val cellHeightDp = iconSizeDp + rowSpacingDp + 12
+            val totalContentHeightDp = numRows * cellHeightDp
+            val availableExtraDp = (widgetMinHeightDp - 96 - totalContentHeightDp).coerceAtLeast(0)
+
+            val topOffsetDp = when (appsAlignment) {
+                "center", "middle" -> availableExtraDp / 2
+                "bottom" -> availableExtraDp
+                else -> 0
+            }
+            val topOffsetPx = (topOffsetDp * density).toInt()
+            partialViews.setViewPadding(R.id.apps_outer_container, 0, topOffsetPx, 0, 0)
+
             appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, nextGridId)
-            partialViews.setDisplayedChild(R.id.app_view_flipper, nextSlot)
+            partialViews.setDisplayedChild(R.id.app_view_flipper, flipperIndex)
             appWidgetManager.partiallyUpdateAppWidget(appWidgetId, partialViews)
         }
 
@@ -214,7 +267,6 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                 val sidebarAlignment = prefs.getString("sidebar_alignment", "bottom") ?: "bottom"
                 val sidebarDisplay = prefs.getString("sidebar_display_type", "icons") ?: "icons"
                 val sidebarFont = prefs.getString("sidebar_font_family", "sans-serif") ?: "sans-serif"
-                val animStyle = prefs.getString("animation_style", "fade") ?: "fade"
 
                 val sidebarTextSizeSp = prefs.getInt("sidebar_text_size_sp", 14)
                 val sidebarIconSizeSp = prefs.getInt("sidebar_icon_size_sp", 28)
@@ -224,6 +276,11 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                 val clockSizeSp = prefs.getInt("clock_size_sp", 26)
                 val hideApps = prefs.getBoolean("hide_apps_$appWidgetId", false)
 
+                val gridCols = prefs.getInt("grid_columns", 5)
+                val appsAlignment = prefs.getString("apps_alignment", "top") ?: "top"
+                val rowSpacingDp = prefs.getInt("grid_row_spacing", 8)
+                val iconSizeDp = prefs.getInt("category_icon_size_dp", 46)
+
                 val categories: List<Category> = if (rawJson != null) {
                     try {
                         val type = object : TypeToken<List<Category>>() {}.type
@@ -231,11 +288,30 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                     } catch (_: Exception) { emptyList() }
                 } else emptyList()
 
-                val layoutRes = getLayoutRes(context, sidebarPosition, animStyle)
+                val layoutRes = getLayoutRes(sidebarPosition)
                 val views = RemoteViews(context.packageName, layoutRes)
                 val activeCategory = categories.firstOrNull { it.id == selectedId } ?: categories.firstOrNull()
 
-                views.setViewVisibility(R.id.app_view_flipper, if (hideApps) View.INVISIBLE else View.VISIBLE)
+                views.setViewVisibility(R.id.apps_outer_container, if (hideApps) View.INVISIBLE else View.VISIBLE)
+
+                // Dynamic vertical alignment calculation
+                val density = context.resources.displayMetrics.density
+                val options = appWidgetManager.getAppWidgetOptions(appWidgetId)
+                val widgetMinHeightDp = options?.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 220) ?: 220
+
+                val appCount = activeCategory?.packageNames?.size ?: 0
+                val numRows = ceil(appCount.toDouble() / gridCols).toInt().coerceAtLeast(1)
+                val cellHeightDp = iconSizeDp + rowSpacingDp + 12
+                val totalContentHeightDp = numRows * cellHeightDp
+                val availableExtraDp = (widgetMinHeightDp - 96 - totalContentHeightDp).coerceAtLeast(0)
+
+                val topOffsetDp = when (appsAlignment) {
+                    "center", "middle" -> availableExtraDp / 2
+                    "bottom" -> availableExtraDp
+                    else -> 0
+                }
+                val topOffsetPx = (topOffsetDp * density).toInt()
+                views.setViewPadding(R.id.apps_outer_container, 0, topOffsetPx, 0, 0)
 
                 // 1. Clock Configuration & Toggle Intent
                 if (clockEnabled) {
@@ -326,36 +402,36 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                     }
                 }
 
-                // 4. Bind Flipper Grid Buffers
+                // 4. Bind Flipper Grid Buffers for all supported column sets
                 val currentSlot = prefs.getInt("active_flipper_slot_$appWidgetId", 0)
-                views.setDisplayedChild(R.id.app_view_flipper, currentSlot)
+                val flipperIndex = getFlipperChildIndex(gridCols, currentSlot)
+                views.setDisplayedChild(R.id.app_view_flipper, flipperIndex)
 
-                val serviceIntent0 = Intent(context, AppGridWidgetService::class.java).apply {
-                    putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
-                    data = Uri.parse("widget://categorydock/grid/$appWidgetId/0")
-                }
-                views.setRemoteAdapter(R.id.app_grid_view_0, serviceIntent0)
+                val colOptions = intArrayOf(3, 4, 5, 6)
+                for (col in colOptions) {
+                    for (slot in 0..1) {
+                        val gridId = getGridId(col, slot)
+                        val serviceIntent = Intent(context, AppGridWidgetService::class.java).apply {
+                            putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+                            data = Uri.parse("widget://categorydock/grid/$appWidgetId/$col/$slot")
+                        }
+                        views.setRemoteAdapter(gridId, serviceIntent)
 
-                val serviceIntent1 = Intent(context, AppGridWidgetService::class.java).apply {
-                    putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
-                    data = Uri.parse("widget://categorydock/grid/$appWidgetId/1")
+                        val launchIntent = Intent(context, CategoryWidgetProvider::class.java).apply {
+                            action = ACTION_LAUNCH_APP
+                            putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+                        }
+                        val flagMutable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+                        } else {
+                            PendingIntent.FLAG_UPDATE_CURRENT
+                        }
+                        val pendingTemplate = PendingIntent.getBroadcast(context, appWidgetId * 1000 + col * 10 + slot, launchIntent, flagMutable)
+                        views.setPendingIntentTemplate(gridId, pendingTemplate)
+                    }
                 }
-                views.setRemoteAdapter(R.id.app_grid_view_1, serviceIntent1)
 
-                val launchIntent = Intent(context, CategoryWidgetProvider::class.java).apply {
-                    action = ACTION_LAUNCH_APP
-                    putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
-                }
-                val flagMutable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
-                } else {
-                    PendingIntent.FLAG_UPDATE_CURRENT
-                }
-                val pendingTemplate = PendingIntent.getBroadcast(context, appWidgetId, launchIntent, flagMutable)
-                views.setPendingIntentTemplate(R.id.app_grid_view_0, pendingTemplate)
-                views.setPendingIntentTemplate(R.id.app_grid_view_1, pendingTemplate)
-
-                val activeGridId = if (currentSlot == 0) R.id.app_grid_view_0 else R.id.app_grid_view_1
+                val activeGridId = getGridId(gridCols, currentSlot)
                 appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, activeGridId)
                 appWidgetManager.updateAppWidget(appWidgetId, views)
             } catch (_: Exception) {}
@@ -390,11 +466,10 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                 prefs.edit().putBoolean("hide_apps_$appWidgetId", !isHidden).apply()
 
                 val sidebarPosition = prefs.getString("sidebar_position", "left") ?: "left"
-                val animStyle = prefs.getString("animation_style", "fade") ?: "fade"
-                val layoutRes = getLayoutRes(context, sidebarPosition, animStyle)
+                val layoutRes = getLayoutRes(sidebarPosition)
                 val partialViews = RemoteViews(context.packageName, layoutRes)
 
-                partialViews.setViewVisibility(R.id.app_view_flipper, if (!isHidden) View.INVISIBLE else View.VISIBLE)
+                partialViews.setViewVisibility(R.id.apps_outer_container, if (!isHidden) View.INVISIBLE else View.VISIBLE)
                 appWidgetManager.partiallyUpdateAppWidget(appWidgetId, partialViews)
             }
             ACTION_SWITCH_CATEGORY -> {
