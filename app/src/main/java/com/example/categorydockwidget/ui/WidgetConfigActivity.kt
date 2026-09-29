@@ -4,10 +4,15 @@ import android.app.Activity
 import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -36,6 +41,8 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
 
 class WidgetConfigActivity : ComponentActivity() {
 
@@ -60,8 +67,8 @@ class WidgetConfigActivity : ComponentActivity() {
                     color = Color(0xFFF8F7FC)
                 ) {
                     MainScreen(
-                        onSave = { updatedCategories, pos, align, display, sidebarSp, appDp, font, colorStyle, iconPack ->
-                            saveAndSync(updatedCategories, pos, align, display, sidebarSp, appDp, font, colorStyle, iconPack, appWidgetId)
+                        onSave = { updatedCategories, pos, align, display, sidebarSp, appDp, font, unifiedStyle, clockEnabled, clockFont, clockSize ->
+                            saveAndSync(updatedCategories, pos, align, display, sidebarSp, appDp, font, unifiedStyle, clockEnabled, clockFont, clockSize, appWidgetId)
                         }
                     )
                 }
@@ -77,15 +84,16 @@ class WidgetConfigActivity : ComponentActivity() {
         sidebarSizeSp: Int,
         categoryIconSizeDp: Int,
         sidebarFont: String,
-        iconColorStyle: String,
-        iconPack: String,
+        unifiedIconStyle: String,
+        clockEnabled: Boolean,
+        clockFont: String,
+        clockSizeSp: Int,
         appWidgetId: Int
     ) {
         val prefs = getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
-        val oldStyle = prefs.getString("icon_color_style", "default")
-        val oldPack = prefs.getString("selected_icon_pack", "none")
+        val oldStyle = prefs.getString("unified_icon_style", "white")
 
-        if (oldStyle != iconColorStyle || oldPack != iconPack) {
+        if (oldStyle != unifiedIconStyle) {
             AppIconHelper.clearCache(this)
         }
 
@@ -97,8 +105,10 @@ class WidgetConfigActivity : ComponentActivity() {
             .putInt("sidebar_icon_size_sp", sidebarSizeSp)
             .putInt("category_icon_size_dp", categoryIconSizeDp)
             .putString("sidebar_font_family", sidebarFont)
-            .putString("icon_color_style", iconColorStyle)
-            .putString("selected_icon_pack", iconPack)
+            .putString("unified_icon_style", unifiedIconStyle)
+            .putBoolean("clock_enabled", clockEnabled)
+            .putString("clock_font", clockFont)
+            .putInt("clock_size_sp", clockSizeSp)
             .apply()
 
         AppIconHelper.prewarmIcons(this, categories)
@@ -115,7 +125,7 @@ class WidgetConfigActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
-    onSave: (List<Category>, String, String, String, Int, Int, String, String, String) -> Unit
+    onSave: (List<Category>, String, String, String, Int, Int, String, String, Boolean, String, Int) -> Unit
 ) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE) }
@@ -130,6 +140,7 @@ fun MainScreen(
     var showIconDialog by remember { mutableStateOf(false) }
     var iconInputCustom by remember { mutableStateOf("") }
     var showFontDialog by remember { mutableStateOf(false) }
+    var showClockFontDialog by remember { mutableStateOf(false) }
 
     var categories by remember {
         val rawJson = prefs.getString("categories_json", null)
@@ -165,14 +176,23 @@ fun MainScreen(
         mutableStateOf(prefs.getString("sidebar_font_family", "sans-serif") ?: "sans-serif")
     }
 
-    var iconColorStyle by remember {
-        mutableStateOf(prefs.getString("icon_color_style", "white") ?: "white")
-    }
-    var selectedIconPack by remember {
-        mutableStateOf(prefs.getString("selected_icon_pack", "none") ?: "none")
+    // Unified Icon Style (Default, White, Black, or "pack:<pack_package>")
+    var unifiedIconStyle by remember {
+        mutableStateOf(prefs.getString("unified_icon_style", "white") ?: "white")
     }
     var installedIconPacks by remember {
         mutableStateOf<List<AppModel>>(emptyList())
+    }
+
+    // Clock state
+    var clockEnabled by remember {
+        mutableStateOf(prefs.getBoolean("clock_enabled", true))
+    }
+    var clockFont by remember {
+        mutableStateOf(prefs.getString("clock_font", "sans-serif") ?: "sans-serif")
+    }
+    var clockSizeSp by remember {
+        mutableFloatStateOf(prefs.getInt("clock_size_sp", 26).toFloat())
     }
 
     val cachedList = remember { AppRepository.getCachedApps(context) }
@@ -199,6 +219,36 @@ fun MainScreen(
             it.packageName.contains(searchQuery, ignoreCase = true)
         }
         list.distinctBy { it.packageName }
+    }
+
+    // Activity Result Launcher for Custom Gallery Category Icon
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null && editingCategoryId != null) {
+            try {
+                val inputStream = context.contentResolver.openInputStream(uri)
+                val rawBitmap = BitmapFactory.decodeStream(inputStream)
+                if (rawBitmap != null) {
+                    val iconDir = File(context.filesDir, "category_icons")
+                    if (!iconDir.exists()) iconDir.mkdirs()
+                    val fileName = "cat_${editingCategoryId}_${System.currentTimeMillis()}.png"
+                    val file = File(iconDir, fileName)
+                    val scaled = Bitmap.createScaledBitmap(rawBitmap, 96, 96, true)
+                    FileOutputStream(file).use { out ->
+                        scaled.compress(Bitmap.CompressFormat.PNG, 100, out)
+                    }
+
+                    categories = categories.map {
+                        if (it.id == editingCategoryId) it.copy(icon = "gallery:$fileName") else it
+                    }
+                    showIconDialog = false
+                    Toast.makeText(context, "Gallery Icon Selected!", Toast.LENGTH_SHORT).show()
+                }
+            } catch (_: Exception) {
+                Toast.makeText(context, "Could not load image", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     val fontOptions = listOf(
@@ -250,8 +300,10 @@ fun MainScreen(
                             sidebarSizeSp.toInt(),
                             categoryIconSizeDp.toInt(),
                             sidebarFont,
-                            iconColorStyle,
-                            selectedIconPack
+                            unifiedIconStyle,
+                            clockEnabled,
+                            clockFont,
+                            clockSizeSp.toInt()
                         )
                     },
                     modifier = Modifier.fillMaxWidth().height(52.dp),
@@ -344,7 +396,7 @@ fun MainScreen(
                                 ) {
                                     Text(
                                         text = currentCategory.displayBadge,
-                                        fontSize = 22.sp,
+                                        fontSize = 20.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = Color(0xFF7C3AED)
                                     )
@@ -594,7 +646,7 @@ fun MainScreen(
                 }
             }
 
-            // TAB 1: SIDE BAR
+            // TAB 1: SIDE BAR (Placement, Clock, Font, Size)
             if (selectedMainTab == 1) {
                 LazyColumn(
                     modifier = Modifier
@@ -602,6 +654,7 @@ fun MainScreen(
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
+                    // 1. Sidebar Placement
                     item {
                         SettingsCard(
                             title = "Sidebar Placement",
@@ -610,7 +663,7 @@ fun MainScreen(
                         ) {
                             Column {
                                 RadioOption(
-                                    label = "Left Side (Matching Reference)",
+                                    label = "Left Side",
                                     isSelected = sidebarPosition == "left",
                                     onClick = { sidebarPosition = "left" }
                                 )
@@ -623,6 +676,67 @@ fun MainScreen(
                         }
                     }
 
+                    // 2. Sidebar Clock Controls
+                    item {
+                        SettingsCard(
+                            title = "Sidebar Clock",
+                            titleColor = Color(0xFF7C3AED),
+                            subtitle = "Enable or customize the stacked digital clock above the sidebar."
+                        ) {
+                            Column {
+                                RadioOption(
+                                    label = "Show Clock (On)",
+                                    isSelected = clockEnabled,
+                                    onClick = { clockEnabled = true }
+                                )
+                                RadioOption(
+                                    label = "Hide Clock (Off)",
+                                    isSelected = !clockEnabled,
+                                    onClick = { clockEnabled = false }
+                                )
+
+                                if (clockEnabled) {
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { showClockFontDialog = true }
+                                            .padding(horizontal = 20.dp, vertical = 10.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column {
+                                            Text("Clock Font", fontSize = 12.sp, color = Color(0xFF6B7280))
+                                            Text(getFontLabel(clockFont), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E1B2E))
+                                        }
+                                        Text("Change Font →", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF7C3AED))
+                                    }
+
+                                    Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text("Clock Size", fontSize = 13.sp, color = Color(0xFF374151), fontWeight = FontWeight.Medium)
+                                            Text("${clockSizeSp.toInt()} sp", fontSize = 13.sp, color = Color(0xFF7C3AED), fontWeight = FontWeight.Bold)
+                                        }
+                                        Slider(
+                                            value = clockSizeSp,
+                                            onValueChange = { clockSizeSp = it },
+                                            valueRange = 18f..38f,
+                                            colors = SliderDefaults.colors(
+                                                thumbColor = Color(0xFF7C3AED),
+                                                activeTrackColor = Color(0xFF7C3AED),
+                                                inactiveTrackColor = Color(0xFFEDE9FE)
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 3. Vertical Alignment
                     item {
                         SettingsCard(
                             title = "Vertical Alignment",
@@ -631,7 +745,7 @@ fun MainScreen(
                         ) {
                             Column {
                                 RadioOption(
-                                    label = "Bottom (Matching Reference)",
+                                    label = "Bottom",
                                     isSelected = sidebarAlignment == "bottom",
                                     onClick = { sidebarAlignment = "bottom" }
                                 )
@@ -649,20 +763,21 @@ fun MainScreen(
                         }
                     }
 
+                    // 4. Tab Display Style
                     item {
                         SettingsCard(
                             title = "Tab Display Style",
                             titleColor = Color(0xFFDB2777),
-                            subtitle = "Choose whether category tabs display icons or short text labels."
+                            subtitle = "Choose whether category tabs display icons or full text labels."
                         ) {
                             Column {
                                 RadioOption(
-                                    label = "Icons (Emoji / Badges - Matching Reference)",
+                                    label = "Icons (Symbols / Emoji / Gallery)",
                                     isSelected = sidebarDisplayType == "icons",
                                     onClick = { sidebarDisplayType = "icons" }
                                 )
                                 RadioOption(
-                                    label = "Heading (Text)",
+                                    label = "Heading (Full Text Labels)",
                                     isSelected = sidebarDisplayType == "heading",
                                     onClick = { sidebarDisplayType = "heading" }
                                 )
@@ -670,7 +785,7 @@ fun MainScreen(
                         }
                     }
 
-                    // Compact Font Selector
+                    // 5. Sidebar Heading Font
                     item {
                         SettingsCard(
                             title = "Sidebar Heading Font",
@@ -708,6 +823,7 @@ fun MainScreen(
                         }
                     }
 
+                    // 6. Sidebar Item Size
                     item {
                         SettingsCard(
                             title = "Sidebar Item Size",
@@ -741,7 +857,7 @@ fun MainScreen(
                 }
             }
 
-            // TAB 2: GENERAL
+            // TAB 2: GENERAL (Unified App Icon Style & Icon Pack in One)
             if (selectedMainTab == 2) {
                 LazyColumn(
                     modifier = Modifier
@@ -751,62 +867,47 @@ fun MainScreen(
                 ) {
                     item {
                         SettingsCard(
-                            title = "App Icon Color Theme",
+                            title = "App Icon Style & Pack",
                             titleColor = Color(0xFF2563EB),
-                            subtitle = "Switch between colorful default icons or clean minimalist monochrome icons."
+                            subtitle = "Choose one icon appearance for all apps in the widget."
                         ) {
                             Column {
                                 RadioOption(
-                                    label = "Monochrome White (Minimal - Matching Reference)",
-                                    isSelected = iconColorStyle == "white",
-                                    onClick = { iconColorStyle = "white" }
+                                    label = "Monochrome White (Minimal)",
+                                    isSelected = unifiedIconStyle == "white",
+                                    onClick = { unifiedIconStyle = "white" }
                                 )
                                 RadioOption(
-                                    label = "Default (Original App Colors)",
-                                    isSelected = iconColorStyle == "default",
-                                    onClick = { iconColorStyle = "default" }
+                                    label = "Default (Original Colors)",
+                                    isSelected = unifiedIconStyle == "default",
+                                    onClick = { unifiedIconStyle = "default" }
                                 )
                                 RadioOption(
                                     label = "Monochrome Black (Stealth)",
-                                    isSelected = iconColorStyle == "black",
-                                    onClick = { iconColorStyle = "black" }
-                                )
-                            }
-                        }
-                    }
-
-                    item {
-                        SettingsCard(
-                            title = "Icon Pack (Select Icon App)",
-                            titleColor = Color(0xFF7C3AED),
-                            subtitle = "Apply icons from installed icon pack apps (e.g. Whicons)."
-                        ) {
-                            Column {
-                                RadioOption(
-                                    label = "None (System / Filter Engine)",
-                                    isSelected = selectedIconPack == "none" || selectedIconPack.isBlank(),
-                                    onClick = { selectedIconPack = "none" }
+                                    isSelected = unifiedIconStyle == "black",
+                                    onClick = { unifiedIconStyle = "black" }
                                 )
 
-                                if (installedIconPacks.isEmpty()) {
+                                if (installedIconPacks.isNotEmpty()) {
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(horizontal = 20.dp, vertical = 10.dp)
+                                            .padding(horizontal = 20.dp, vertical = 6.dp)
                                     ) {
                                         Text(
-                                            text = "Install Whicons, Flight Lite, or Delta from Play Store for complete vector icon pack matching.",
-                                            color = Color.Gray,
+                                            text = "Installed Icon Packs:",
                                             fontSize = 12.sp,
-                                            lineHeight = 16.sp
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF7C3AED)
                                         )
                                     }
-                                } else {
+
                                     installedIconPacks.forEach { pack ->
+                                        val packVal = "pack:${pack.packageName}"
                                         RadioOption(
-                                            label = pack.appName,
-                                            isSelected = selectedIconPack == pack.packageName,
-                                            onClick = { selectedIconPack = pack.packageName }
+                                            label = "${pack.appName} (Icon Pack)",
+                                            isSelected = unifiedIconStyle == packVal,
+                                            onClick = { unifiedIconStyle = packVal }
                                         )
                                     }
                                 }
@@ -836,8 +937,10 @@ fun MainScreen(
                                         sidebarSizeSp = 14f
                                         categoryIconSizeDp = 46f
                                         sidebarFont = "sans-serif"
-                                        iconColorStyle = "white"
-                                        selectedIconPack = "none"
+                                        unifiedIconStyle = "white"
+                                        clockEnabled = true
+                                        clockFont = "sans-serif"
+                                        clockSizeSp = 26f
                                         AppIconHelper.clearCache(context)
                                         Toast.makeText(context, "Reset completed. Tap Save to apply.", Toast.LENGTH_SHORT).show()
                                     },
@@ -856,16 +959,14 @@ fun MainScreen(
         }
     }
 
-    // Font Picker Dialog
+    // Sidebar Font Picker Dialog
     if (showFontDialog) {
         AlertDialog(
             onDismissRequest = { showFontDialog = false },
-            title = { Text("Select Font Style", fontWeight = FontWeight.Bold, color = Color(0xFF1E1B2E)) },
+            title = { Text("Select Sidebar Font", fontWeight = FontWeight.Bold, color = Color(0xFF1E1B2E)) },
             text = {
                 LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 400.dp)
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 380.dp)
                 ) {
                     items(fontOptions) { (key, label) ->
                         Row(
@@ -889,11 +990,7 @@ fun MainScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (sidebarFont == key) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(9.dp)
-                                            .background(Color(0xFF7C3AED), CircleShape)
-                                    )
+                                    Box(modifier = Modifier.size(9.dp).background(Color(0xFF7C3AED), CircleShape))
                                 }
                             }
                             Spacer(modifier = Modifier.width(12.dp))
@@ -909,6 +1006,60 @@ fun MainScreen(
             },
             confirmButton = {
                 TextButton(onClick = { showFontDialog = false }) {
+                    Text("Close", color = Color(0xFF7C3AED))
+                }
+            },
+            containerColor = Color.White
+        )
+    }
+
+    // Clock Font Picker Dialog
+    if (showClockFontDialog) {
+        AlertDialog(
+            onDismissRequest = { showClockFontDialog = false },
+            title = { Text("Select Clock Font", fontWeight = FontWeight.Bold, color = Color(0xFF1E1B2E)) },
+            text = {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 380.dp)
+                ) {
+                    items(fontOptions) { (key, label) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    clockFont = key
+                                    showClockFontDialog = false
+                                }
+                                .padding(vertical = 10.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(18.dp)
+                                    .border(
+                                        width = 2.dp,
+                                        color = if (clockFont == key) Color(0xFF7C3AED) else Color(0xFF9CA3AF),
+                                        shape = CircleShape
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (clockFont == key) {
+                                    Box(modifier = Modifier.size(9.dp).background(Color(0xFF7C3AED), CircleShape))
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = label,
+                                fontSize = 14.sp,
+                                fontWeight = if (clockFont == key) FontWeight.Bold else FontWeight.Normal,
+                                color = if (clockFont == key) Color(0xFF7C3AED) else Color(0xFF1E1B2E)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showClockFontDialog = false }) {
                     Text("Close", color = Color(0xFF7C3AED))
                 }
             },
@@ -1005,75 +1156,87 @@ fun MainScreen(
         )
     }
 
-    // Change Icon Dialog
+    // Change Category Icon Dialog (Black & White Curated Categories + Gallery Picker)
     if (showIconDialog) {
         val currentCategory = categories.firstOrNull { it.id == editingCategoryId }
-        val iconPresets = listOf("★", "🏛️", "🛠️", "🛍️", "➕", "📱", "🎮", "🎵", "💬", "🛒", "📸", "⚡")
+
+        val bAndWIcons = listOf(
+            // General & Star
+            "★", "☆", "🏠", "📁", "⚡", "🔍", "⚙️", "⏱️",
+            // Banking & Finance
+            "🏛️", "💳", "💰", "📈", "🏦", "💵",
+            // AI & Technology
+            "🤖", "🧠", "💻", "🔬", "📡", "🌐",
+            // Tools & Utility
+            "🛠️", "🔧", "🔨", "📱", "🔋", "🔑",
+            // Travel & Navigation
+            "✈️", "🧭", "🚗", "🚆", "📍", "🗺️",
+            // Movies & Media
+            "🎬", "🍿", "📺", "🎵", "🎧", "📷",
+            // Games
+            "🎮", "🕹️", "🎲", "👾", "🎯", "🏆",
+            // Social & Chat
+            "💬", "✉️", "📞", "👥", "🔔", "📣",
+            // Shopping & Food
+            "🛍️", "🛒", "🏷️", "☕", "🍕", "🍔"
+        )
 
         AlertDialog(
             onDismissRequest = { showIconDialog = false },
-            title = { Text("Select Dock Icon", fontWeight = FontWeight.Bold, color = Color(0xFF1E1B2E)) },
+            title = { Text("Category Icon", fontWeight = FontWeight.Bold, color = Color(0xFF1E1B2E)) },
             text = {
-                Column {
-                    Text("Tap an icon matching the reference style[span_8](start_span)[span_8](end_span) or type custom characters:", color = Color.Gray, fontSize = 13.sp)
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // Upload from Gallery Button
+                    Button(
+                        onClick = { galleryLauncher.launch("image/*") },
+                        modifier = Modifier.fillMaxWidth().height(46.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
                     ) {
-                        iconPresets.take(6).forEach { emoji ->
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .background(Color(0xFFF3E8FF), CircleShape)
-                                    .clickable {
-                                        if (currentCategory != null) {
-                                            categories = categories.map {
-                                                if (it.id == currentCategory.id) it.copy(icon = emoji) else it
-                                            }
-                                        }
-                                        showIconDialog = false
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(emoji, fontSize = 18.sp)
-                            }
-                        }
+                        Text("📁 Upload Icon from Gallery", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     }
 
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Text("Or choose a curated symbol:", color = Color.Gray, fontSize = 12.sp)
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 240.dp)
                     ) {
-                        iconPresets.drop(6).take(6).forEach { emoji ->
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .background(Color(0xFFF3E8FF), CircleShape)
-                                    .clickable {
-                                        if (currentCategory != null) {
-                                            categories = categories.map {
-                                                if (it.id == currentCategory.id) it.copy(icon = emoji) else it
-                                            }
-                                        }
-                                        showIconDialog = false
-                                    },
-                                contentAlignment = Alignment.Center
+                        items(bAndWIcons.chunked(6)) { rowIcons ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text(emoji, fontSize = 18.sp)
+                                rowIcons.forEach { symbol ->
+                                    Box(
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .background(Color(0xFFF3E8FF), CircleShape)
+                                            .clickable {
+                                                if (currentCategory != null) {
+                                                    categories = categories.map {
+                                                        if (it.id == currentCategory.id) it.copy(icon = symbol) else it
+                                                    }
+                                                }
+                                                showIconDialog = false
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(symbol, fontSize = 18.sp)
+                                    }
+                                }
                             }
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(16.dp))
-
+                    Spacer(modifier = Modifier.height(12.dp))
                     OutlinedTextField(
                         value = iconInputCustom,
-                        onValueChange = { if (it.length <= 2) iconInputCustom = it },
-                        placeholder = { Text("Or custom symbol / 2 letters") },
+                        onValueChange = { if (it.length <= 4) iconInputCustom = it },
+                        placeholder = { Text("Or custom 2-4 letters (e.g. AI, TV)") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )

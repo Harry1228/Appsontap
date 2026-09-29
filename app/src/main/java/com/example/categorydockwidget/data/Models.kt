@@ -30,10 +30,10 @@ data class Category(
     val id: String,
     val name: String,
     val packageNames: List<String> = emptyList(),
-    val icon: String? = ""
+    val icon: String? = "" // Holds symbol, text, or "gallery:<filename>"
 ) {
     val displayBadge: String
-        get() = if (!icon.isNullOrBlank()) icon else name.take(2).uppercase()
+        get() = if (!icon.isNullOrBlank() && !icon.startsWith("gallery:")) icon else name.take(4).uppercase()
 }
 
 object WidgetKeys {
@@ -96,16 +96,13 @@ object AppIconHelper {
         try {
             val pm = context.packageManager
             val packRes = pm.getResourcesForApplication(iconPackPackage)
-
             var parser: XmlPullParser? = null
 
-            // 1. Try compiled binary XML in res/xml/appfilter.xml (Standard in Whicons / CandyBar)
             val resId = packRes.getIdentifier("appfilter", "xml", iconPackPackage)
             if (resId != 0) {
                 parser = packRes.getXml(resId)
             }
 
-            // 2. Fallback to assets/appfilter.xml
             if (parser == null) {
                 try {
                     val packContext = context.createPackageContext(iconPackPackage, Context.CONTEXT_IGNORE_SECURITY)
@@ -164,7 +161,6 @@ object AppIconHelper {
             val comp = launchIntent?.component
 
             var drawableName: String? = null
-
             if (comp != null) {
                 val fullComp = comp.flattenToString()
                 val compInfo = "${comp.packageName}/${comp.className}"
@@ -174,14 +170,12 @@ object AppIconHelper {
             if (drawableName == null) {
                 drawableName = map[appPackage] ?: map[appPackage.lowercase()]
             }
-
             if (drawableName == null) {
                 drawableName = appPackage.replace('.', '_').lowercase()
             }
 
             val packRes = pm.getResourcesForApplication(iconPackPackage)
             var resId = packRes.getIdentifier(drawableName, "drawable", iconPackPackage)
-
             if (resId == 0) {
                 val shortName = appPackage.substringAfterLast('.').lowercase()
                 resId = packRes.getIdentifier(shortName, "drawable", iconPackPackage)
@@ -209,25 +203,12 @@ object AppIconHelper {
         val pixels = IntArray(size * size)
         bitmap.getPixels(pixels, 0, size, 0, 0, size, size)
 
-        var totalAlpha = 0L
         var opaquePixels = 0
-        var brightPixels = 0
-
         for (p in pixels) {
-            val a = Color.alpha(p)
-            if (a > 30) {
-                totalAlpha += a
-                opaquePixels++
-                val r = Color.red(p)
-                val g = Color.green(p)
-                val b = Color.blue(p)
-                val lum = (0.299 * r + 0.587 * g + 0.114 * b).toInt()
-                if (lum > 140) brightPixels++
-            }
+            if (Color.alpha(p) > 30) opaquePixels++
         }
 
         val isGlyph = (opaquePixels < (size * size * 0.48))
-
         if (isGlyph) {
             val tintColor = if (isWhite) Color.WHITE else Color.parseColor("#18181B")
             val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -255,9 +236,9 @@ object AppIconHelper {
 
     fun getAppBitmap(context: Context, packageName: String): Bitmap? {
         val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
-        val iconStyle = prefs.getString("icon_color_style", "default") ?: "default"
-        val iconPack = prefs.getString("selected_icon_pack", "none") ?: "none"
-        val cacheKey = "${packageName}_${iconStyle}_${iconPack}"
+        // Unified style key: "default", "white", "black", or "pack:<packPackageName>"
+        val unifiedStyle = prefs.getString("unified_icon_style", "white") ?: "white"
+        val cacheKey = "${packageName}_${unifiedStyle}"
 
         iconCache.get(cacheKey)?.let { return it }
 
@@ -276,13 +257,18 @@ object AppIconHelper {
 
         return try {
             val size = 96
-            var baseBitmap = getIconFromPack(context, iconPack, packageName)
+            var baseBitmap: Bitmap? = null
+
+            if (unifiedStyle.startsWith("pack:")) {
+                val packPkg = unifiedStyle.removePrefix("pack:")
+                baseBitmap = getIconFromPack(context, packPkg, packageName)
+            }
 
             if (baseBitmap == null) {
                 val pm = context.packageManager
                 val drawable = pm.getApplicationIcon(packageName)
 
-                baseBitmap = if (iconStyle == "white" || iconStyle == "black") {
+                baseBitmap = if (unifiedStyle == "white" || unifiedStyle == "black") {
                     var targetDrawable: Drawable? = null
                     if (drawable is AdaptiveIconDrawable) {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -309,7 +295,7 @@ object AppIconHelper {
                 }
             }
 
-            val finalBitmap = when (iconStyle) {
+            val finalBitmap = when (unifiedStyle) {
                 "white" -> convertToMonochrome(baseBitmap, isWhite = true)
                 "black" -> convertToMonochrome(baseBitmap, isWhite = false)
                 else -> baseBitmap

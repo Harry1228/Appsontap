@@ -7,12 +7,17 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.TypefaceSpan
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.widget.RemoteViews
@@ -21,6 +26,7 @@ import com.example.categorydockwidget.data.AppIconHelper
 import com.example.categorydockwidget.data.Category
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import java.io.File
 
 class CategoryWidgetProvider : AppWidgetProvider() {
 
@@ -43,14 +49,15 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             R.id.cat_icon_3, R.id.cat_icon_4, R.id.cat_icon_5
         )
 
+        // Renders complete text dynamically without chopping off at 3 letters
         private fun createTextBadgeBitmap(
             text: String,
             fontKey: String,
             sizeSp: Float,
             isSelected: Boolean
         ): Bitmap {
-            val width = 110
-            val height = 80
+            val width = 130
+            val height = 75
             val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(bitmap)
 
@@ -60,16 +67,34 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                 Typeface.DEFAULT_BOLD
             }
 
+            // Scale text size smoothly to prevent truncation (e.g., "HOME", "BANK", "TOOLS")
+            val baseScale = when {
+                text.length <= 2 -> 2.2f
+                text.length <= 4 -> 1.75f
+                else -> 1.45f
+            }
+
             val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = if (isSelected) Color.WHITE else Color.parseColor("#B0B0B8")
                 this.typeface = typeface
                 textAlign = Paint.Align.CENTER
-                textSize = sizeSp * 2.2f
+                textSize = sizeSp * baseScale
             }
 
             val yPos = (height / 2f) - ((paint.descent() + paint.ascent()) / 2f)
             canvas.drawText(text, width / 2f, yPos, paint)
             return bitmap
+        }
+
+        private fun getGalleryBitmap(context: Context, fileName: String): Bitmap? {
+            return try {
+                val file = File(context.filesDir, "category_icons/$fileName")
+                if (file.exists()) {
+                    BitmapFactory.decodeFile(file.absolutePath)
+                } else null
+            } catch (_: Exception) {
+                null
+            }
         }
 
         fun updateWidget(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int) {
@@ -82,6 +107,11 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                 val sidebarDisplay = prefs.getString("sidebar_display_type", "icons") ?: "icons"
                 val sidebarSizeSp = prefs.getInt("sidebar_icon_size_sp", 14)
                 val sidebarFont = prefs.getString("sidebar_font_family", "sans-serif") ?: "sans-serif"
+
+                // Clock preferences
+                val clockEnabled = prefs.getBoolean("clock_enabled", true)
+                val clockFont = prefs.getString("clock_font", "sans-serif") ?: "sans-serif"
+                val clockSizeSp = prefs.getInt("clock_size_sp", 26)
 
                 val categories: List<Category> = if (rawJson != null) {
                     try {
@@ -103,7 +133,29 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                 val views = RemoteViews(context.packageName, layoutRes)
                 val activeCategory = categories.firstOrNull { it.id == selectedId } ?: categories.firstOrNull()
 
-                // Sidebar Alignment
+                // 1. Clock Configuration (Visibility, Font, Size)
+                if (clockEnabled) {
+                    views.setViewVisibility(R.id.clock_container, View.VISIBLE)
+                    views.setTextViewTextSize(R.id.clock_hours, TypedValue.COMPLEX_UNIT_SP, clockSizeSp.toFloat())
+                    views.setTextViewTextSize(R.id.clock_minutes, TypedValue.COMPLEX_UNIT_SP, clockSizeSp.toFloat())
+
+                    val formatH = SpannableString("hh").apply {
+                        setSpan(TypefaceSpan(clockFont), 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    }
+                    val formatM = SpannableString("mm").apply {
+                        setSpan(TypefaceSpan(clockFont), 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    }
+                    views.setCharSequence(R.id.clock_hours, "setFormat12Hour", formatH)
+                    views.setCharSequence(R.id.clock_hours, "setFormat24Hour", SpannableString("HH").apply {
+                        setSpan(TypefaceSpan(clockFont), 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    })
+                    views.setCharSequence(R.id.clock_minutes, "setFormat12Hour", formatM)
+                    views.setCharSequence(R.id.clock_minutes, "setFormat24Hour", formatM)
+                } else {
+                    views.setViewVisibility(R.id.clock_container, View.GONE)
+                }
+
+                // 2. Sidebar Alignment
                 val gravityValue = when (sidebarAlignment) {
                     "top" -> Gravity.TOP or Gravity.CENTER_HORIZONTAL
                     "center" -> Gravity.CENTER
@@ -111,7 +163,7 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                 }
                 views.setInt(R.id.sidebar_container, "setGravity", gravityValue)
 
-                // Category Dock Pills
+                // 3. Category Dock Pills
                 for (j in CAT_CONTAINER_IDS.indices) {
                     val containerId = CAT_CONTAINER_IDS[j]
                     val bgId = CAT_BG_IDS[j]
@@ -121,19 +173,32 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                         val cat = categories[j]
                         val isSelected = cat.id == activeCategory?.id
 
-                        val displayText = if (sidebarDisplay == "heading" || sidebarDisplay == "text") {
-                            cat.name.take(3).uppercase()
+                        if (cat.icon?.startsWith("gallery:") == true) {
+                            val fileName = cat.icon.removePrefix("gallery:")
+                            val galleryBmp = getGalleryBitmap(context, fileName)
+                            if (galleryBmp != null) {
+                                views.setImageViewBitmap(iconId, galleryBmp)
+                            } else {
+                                val fallbackBmp = createTextBadgeBitmap(cat.name.take(4).uppercase(), sidebarFont, sidebarSizeSp.toFloat(), isSelected)
+                                views.setImageViewBitmap(iconId, fallbackBmp)
+                            }
                         } else {
-                            cat.displayBadge
+                            val displayText = if (sidebarDisplay == "heading" || sidebarDisplay == "text") {
+                                // Full text up to 5 chars (e.g., "HOME", "BANK", "TOOLS") without truncation
+                                cat.name.take(5).uppercase()
+                            } else {
+                                cat.displayBadge
+                            }
+
+                            val badgeBmp = createTextBadgeBitmap(
+                                displayText,
+                                sidebarFont,
+                                sidebarSizeSp.toFloat(),
+                                isSelected
+                            )
+                            views.setImageViewBitmap(iconId, badgeBmp)
                         }
 
-                        val badgeBmp = createTextBadgeBitmap(
-                            displayText,
-                            sidebarFont,
-                            sidebarSizeSp.toFloat(),
-                            isSelected
-                        )
-                        views.setImageViewBitmap(iconId, badgeBmp)
                         views.setImageViewResource(
                             bgId,
                             if (isSelected) R.drawable.pill_active else R.drawable.pill_inactive
@@ -157,7 +222,7 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                     }
                 }
 
-                // Scrollable GridView Connection
+                // 4. Scrollable GridView Connection
                 val serviceIntent = Intent(context, AppGridWidgetService::class.java).apply {
                     putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
                     data = Uri.parse(toUri(Intent.URI_INTENT_SCHEME))
