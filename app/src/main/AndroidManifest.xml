@@ -6,10 +6,9 @@
     <application
         android:allowBackup="true"
         android:icon="@android:drawable/sym_def_app_icon"
-        android:label="Apps on Tap"
+        android:label="Apps Widget"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
-        <!-- Standalone Configuration App -->
         <activity
             android:name=".ui.WidgetConfigActivity"
             android:exported="true">
@@ -22,20 +21,25 @@
             </intent-filter>
         </activity>
 
-        <!-- Widget Receiver -->
         <receiver
             android:name=".widget.CategoryWidgetProvider"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="com.example.categorydockwidget.ACTION_SWITCH_CATEGORY" />
+                <action android:name="com.example.categorydockwidget.ACTION_LAUNCH_APP" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/category_widget_info" />
         </receiver>
 
-        <!-- Background Package Observer -->
+        <!-- Service for scrollable app grid in widget -->
+        <service
+            android:name=".widget.AppGridWidgetService"
+            android:permission="android.permission.BIND_REMOTEVIEWS"
+            android:exported="false" />
+
         <receiver
             android:name=".data.PackageChangeReceiver"
             android:exported="true">

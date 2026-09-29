@@ -6,7 +6,10 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.os.Build
 import android.util.TypedValue
+import android.view.Gravity
 import android.view.View
 import android.widget.RemoteViews
 import com.example.categorydockwidget.R
@@ -19,12 +22,9 @@ class CategoryWidgetProvider : AppWidgetProvider() {
 
     companion object {
         const val ACTION_SWITCH_CATEGORY = "com.example.categorydockwidget.ACTION_SWITCH_CATEGORY"
+        const val ACTION_LAUNCH_APP = "com.example.categorydockwidget.ACTION_LAUNCH_APP"
         const val EXTRA_CATEGORY_ID = "extra_category_id"
-
-        private val ICON_VIEW_IDS = intArrayOf(
-            R.id.app_icon_0, R.id.app_icon_1, R.id.app_icon_2, R.id.app_icon_3,
-            R.id.app_icon_4, R.id.app_icon_5, R.id.app_icon_6, R.id.app_icon_7
-        )
+        const val EXTRA_PACKAGE_NAME = "extra_package_name"
 
         private val CAT_CONTAINER_IDS = intArrayOf(
             R.id.cat_container_0, R.id.cat_container_1, R.id.cat_container_2, R.id.cat_container_3
@@ -41,9 +41,9 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             val selectedId = prefs.getString("selected_category_$appWidgetId", null)
             val rawJson = prefs.getString("categories_json", null)
             val sidebarPosition = prefs.getString("sidebar_position", "right") ?: "right"
+            val sidebarAlignment = prefs.getString("sidebar_alignment", "center") ?: "center"
             val sidebarDisplay = prefs.getString("sidebar_display_type", "icons") ?: "icons"
-            val sidebarIconSize = prefs.getString("sidebar_icon_size", "medium") ?: "medium"
-            val categoryIconSize = prefs.getString("category_icon_size", "medium") ?: "medium"
+            val sidebarSizeSp = prefs.getInt("sidebar_icon_size_sp", 14)
 
             val categories: List<Category> = if (rawJson != null) {
                 try {
@@ -65,63 +65,25 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             val views = RemoteViews(context.packageName, layoutRes)
 
             val activeCategory = categories.firstOrNull { it.id == selectedId } ?: categories.firstOrNull()
-            val apps = activeCategory?.packageNames ?: emptyList()
 
             // 1. Heading and Divider
             if (activeCategory != null) {
                 views.setTextViewText(R.id.widget_category_title, activeCategory.name.uppercase())
-                views.setViewVisibility(R.id.widget_category_title, View.VISIBLE)
-                views.setViewVisibility(R.id.category_title_divider, View.VISIBLE)
             } else {
-                views.setTextViewText(R.id.widget_category_title, "APPS ON TAP")
-                views.setViewVisibility(R.id.widget_category_title, View.VISIBLE)
-                views.setViewVisibility(R.id.category_title_divider, View.VISIBLE)
+                views.setTextViewText(R.id.widget_category_title, "APPS WIDGET")
             }
+            views.setViewVisibility(R.id.widget_category_title, View.VISIBLE)
+            views.setViewVisibility(R.id.category_title_divider, View.VISIBLE)
 
-            // 2. Category App Icons with dynamic padding size
-            val appIconPaddingDp = when (categoryIconSize) {
-                "small" -> 10
-                "large" -> 2
-                else -> 6
+            // 2. Vertical Alignment of Sidebar
+            val gravityValue = when (sidebarAlignment) {
+                "top" -> Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                "bottom" -> Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+                else -> Gravity.CENTER
             }
-            val density = context.resources.displayMetrics.density
-            val appIconPaddingPx = (appIconPaddingDp * density).toInt()
+            views.setInt(R.id.sidebar_container, "setGravity", gravityValue)
 
-            for (i in ICON_VIEW_IDS.indices) {
-                val viewId = ICON_VIEW_IDS[i]
-                views.setViewPadding(viewId, appIconPaddingPx, appIconPaddingPx, appIconPaddingPx, appIconPaddingPx)
-
-                if (i < apps.size) {
-                    val pkg = apps[i]
-                    val bitmap = AppIconHelper.getAppBitmap(context, pkg)
-                    val launchIntent = AppIconHelper.getLaunchIntent(context, pkg)
-
-                    if (bitmap != null) {
-                        views.setImageViewBitmap(viewId, bitmap)
-                    }
-
-                    if (launchIntent != null) {
-                        val pendingIntent = PendingIntent.getActivity(
-                            context,
-                            appWidgetId * 100 + i,
-                            launchIntent,
-                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                        )
-                        views.setOnClickPendingIntent(viewId, pendingIntent)
-                    }
-                    views.setViewVisibility(viewId, View.VISIBLE)
-                } else {
-                    views.setViewVisibility(viewId, View.INVISIBLE)
-                }
-            }
-
-            // 3. Sidebar Dock Pills (Display Type + Size)
-            val sidebarTextSizeSp = when (sidebarIconSize) {
-                "small" -> 10f
-                "large" -> 17f
-                else -> 13f
-            }
-
+            // 3. Category Dock Pills
             for (j in CAT_CONTAINER_IDS.indices) {
                 val containerId = CAT_CONTAINER_IDS[j]
                 val bgId = CAT_BG_IDS[j]
@@ -138,7 +100,7 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                     }
 
                     views.setTextViewText(textId, displayText)
-                    views.setTextViewTextSize(textId, TypedValue.COMPLEX_UNIT_SP, sidebarTextSizeSp)
+                    views.setTextViewTextSize(textId, TypedValue.COMPLEX_UNIT_SP, sidebarSizeSp.toFloat())
                     views.setImageViewResource(
                         bgId,
                         if (isSelected) R.drawable.pill_active else R.drawable.pill_inactive
@@ -162,6 +124,27 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                 }
             }
 
+            // 4. Scrollable GridView connection
+            val serviceIntent = Intent(context, AppGridWidgetService::class.java).apply {
+                putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+                data = Uri.parse(toUri(Intent.URI_INTENT_SCHEME))
+            }
+            views.setRemoteAdapter(R.id.app_grid_view, serviceIntent)
+
+            // 5. Fill-in intent template for app clicks
+            val launchIntent = Intent(context, CategoryWidgetProvider::class.java).apply {
+                action = ACTION_LAUNCH_APP
+                putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+            }
+            val flagMutable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT
+            }
+            val pendingTemplate = PendingIntent.getBroadcast(context, appWidgetId, launchIntent, flagMutable)
+            views.setPendingIntentTemplate(R.id.app_grid_view, pendingTemplate)
+
+            appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.app_grid_view)
             appWidgetManager.updateAppWidget(appWidgetId, views)
         }
 
@@ -182,18 +165,28 @@ class CategoryWidgetProvider : AppWidgetProvider() {
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
-        if (intent.action == ACTION_SWITCH_CATEGORY) {
-            val catId = intent.getStringExtra(EXTRA_CATEGORY_ID) ?: return
-            val appWidgetId = intent.getIntExtra(
-                AppWidgetManager.EXTRA_APPWIDGET_ID,
-                AppWidgetManager.INVALID_APPWIDGET_ID
-            )
-            if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
-                val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
-                prefs.edit().putString("selected_category_$appWidgetId", catId).apply()
+        when (intent.action) {
+            ACTION_SWITCH_CATEGORY -> {
+                val catId = intent.getStringExtra(EXTRA_CATEGORY_ID) ?: return
+                val appWidgetId = intent.getIntExtra(
+                    AppWidgetManager.EXTRA_APPWIDGET_ID,
+                    AppWidgetManager.INVALID_APPWIDGET_ID
+                )
+                if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+                    val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
+                    prefs.edit().putString("selected_category_$appWidgetId", catId).apply()
 
-                val appWidgetManager = AppWidgetManager.getInstance(context)
-                updateWidget(context, appWidgetManager, appWidgetId)
+                    val appWidgetManager = AppWidgetManager.getInstance(context)
+                    updateWidget(context, appWidgetManager, appWidgetId)
+                }
+            }
+            ACTION_LAUNCH_APP -> {
+                val pkg = intent.getStringExtra(EXTRA_PACKAGE_NAME) ?: return
+                val launchIntent = AppIconHelper.getLaunchIntent(context, pkg)
+                if (launchIntent != null) {
+                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(launchIntent)
+                }
             }
         }
     }
