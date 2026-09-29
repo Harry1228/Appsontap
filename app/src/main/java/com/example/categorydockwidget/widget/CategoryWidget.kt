@@ -10,9 +10,13 @@ import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.view.View
 import android.widget.RemoteViews
 import com.example.categorydockwidget.R
+import com.example.categorydockwidget.data.Category
 import com.example.categorydockwidget.ui.WidgetConfigActivity
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 
 class CategoryWidgetProvider : AppWidgetProvider() {
 
@@ -60,9 +64,19 @@ class CategoryWidgetProvider : AppWidgetProvider() {
     }
 
     private fun updateWidget(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int) {
-        // Safe check using standard widget layout inflation
+        val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
         val views = RemoteViews(context.packageName, R.layout.widget_layout)
 
+        // Load categories from preferences
+        val rawJson = prefs.getString("categories_json", null)
+        val categories = if (rawJson != null) {
+            try {
+                val type = object : TypeToken<List<Category>>() {}.type
+                Gson().fromJson<List<Category>>(rawJson, type) ?: emptyList()
+            } catch (_: Exception) { emptyList() }
+        } else emptyList()
+
+        // Setup click intent to open configuration activity when tapping the widget background
         val configIntent = Intent(context, WidgetConfigActivity::class.java).apply {
             putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
@@ -71,6 +85,7 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             context, appWidgetId, configIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+        views.setOnClickPendingIntent(R.id.sidebarContainer, configPendingIntent)
 
         appWidgetManager.updateAppWidget(appWidgetId, views)
     }
