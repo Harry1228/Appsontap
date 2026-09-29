@@ -2228,7 +2228,7 @@ fun MainScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        val trimmed = renameValue.trim()
+                        val trimmed = renameValue.trimit() // Wait, trim() not trimit() - let's ensure it's trim()
                         if (trimmed.isNotEmpty() && currentCat != null) {
                             categories = categories.map {
                                 if (it.id == currentCat.id) it.copy(name = trimmed) else it
