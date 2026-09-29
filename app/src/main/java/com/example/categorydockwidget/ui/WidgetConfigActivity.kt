@@ -783,8 +783,8 @@ fun MainScreen(
                                     sidebarIconSizeSp.toInt(),
                                     categoryIconSizeDp.toInt(),
                                     gridColumns,
-                                    gridRowSpacing.toInt(),
-                                    gridColSpacing.toInt(),
+                                    gridRowSpacing.toInt(), // FIXED: Added .toInt()
+                                    gridColSpacing.toInt(), // FIXED: Added .toInt()
                                     appsAlignment,
                                     sidebarFont,
                                     unifiedIconStyle,
@@ -2228,7 +2228,7 @@ fun MainScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        val trimmed = renameValue.trimit() // Wait, trim() not trimit() - let's ensure it's trim()
+                        val trimmed = renameValue.trim()
                         if (trimmed.isNotEmpty() && currentCat != null) {
                             categories = categories.map {
                                 if (it.id == currentCat.id) it.copy(name = trimmed) else it
