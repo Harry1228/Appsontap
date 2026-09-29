@@ -4,7 +4,10 @@
     android:layout_height="match_parent"
     android:background="@drawable/widget_background"
     android:orientation="horizontal"
-    android:padding="6dp">
+    android:paddingStart="6dp"
+    android:paddingEnd="6dp"
+    android:paddingTop="48dp"
+    android:paddingBottom="48dp">
 
     <include layout="@layout/widget_sidebar" />
 

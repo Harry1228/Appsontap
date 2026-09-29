@@ -67,13 +67,14 @@ data class CategoryBackupItem(
 )
 
 data class WidgetFullBackup(
-    val version: Int = 1,
+    val version: Int = 2,
     val timestamp: Long = System.currentTimeMillis(),
     val categories: List<CategoryBackupItem>,
     val sidebarPosition: String,
     val sidebarAlignment: String,
     val sidebarDisplayType: String,
-    val sidebarSizeSp: Int,
+    val sidebarTextSizeSp: Int,
+    val sidebarIconSizeSp: Int,
     val categoryIconSizeDp: Int,
     val sidebarFontFamily: String,
     val unifiedIconStyle: String,
@@ -157,8 +158,8 @@ class WidgetConfigActivity : ComponentActivity() {
                             isDarkTheme = dark
                             prefs.edit().putBoolean("app_theme_dark", dark).apply()
                         },
-                        onSave = { updatedCategories, pos, align, display, sidebarSp, appDp, font, unifiedStyle, clockEnabled, clockFont, clockSize, animStyle ->
-                            saveAndSync(updatedCategories, pos, align, display, sidebarSp, appDp, font, unifiedStyle, clockEnabled, clockFont, clockSize, animStyle, appWidgetId)
+                        onSave = { updatedCategories, pos, align, display, sidebarTextSp, sidebarIconSp, appDp, font, unifiedStyle, clockEnabled, clockFont, clockSize, animStyle ->
+                            saveAndSync(updatedCategories, pos, align, display, sidebarTextSp, sidebarIconSp, appDp, font, unifiedStyle, clockEnabled, clockFont, clockSize, animStyle, appWidgetId)
                         }
                     )
                 }
@@ -171,7 +172,8 @@ class WidgetConfigActivity : ComponentActivity() {
         sidebarPosition: String,
         sidebarAlignment: String,
         sidebarDisplayType: String,
-        sidebarSizeSp: Int,
+        sidebarTextSizeSp: Int,
+        sidebarIconSizeSp: Int,
         categoryIconSizeDp: Int,
         sidebarFont: String,
         unifiedIconStyle: String,
@@ -193,7 +195,8 @@ class WidgetConfigActivity : ComponentActivity() {
             .putString("sidebar_position", sidebarPosition)
             .putString("sidebar_alignment", sidebarAlignment)
             .putString("sidebar_display_type", sidebarDisplayType)
-            .putInt("sidebar_icon_size_sp", sidebarSizeSp)
+            .putInt("sidebar_text_size_sp", sidebarTextSizeSp)
+            .putInt("sidebar_icon_size_sp", sidebarIconSizeSp)
             .putInt("category_icon_size_dp", categoryIconSizeDp)
             .putString("sidebar_font_family", sidebarFont)
             .putString("unified_icon_style", unifiedIconStyle)
@@ -214,14 +217,7 @@ class WidgetConfigActivity : ComponentActivity() {
     }
 }
 
-enum class NovaScreen {
-    HOME,
-    CATEGORIES,
-    SIDEBAR,
-    ANIMATION,
-    ICONS,
-    BACKUP
-}
+enum class NovaScreen { HOME, CATEGORIES, SIDEBAR, ANIMATION, ICONS, BACKUP }
 
 @Composable
 fun CategoryBadgeView(category: Category, size: Dp, theme: NovaThemePalette, modifier: Modifier = Modifier) {
@@ -266,14 +262,13 @@ fun CategoryBadgeView(category: Category, size: Dp, theme: NovaThemePalette, mod
 fun MainScreen(
     theme: NovaThemePalette,
     onToggleTheme: (Boolean) -> Unit,
-    onSave: (List<Category>, String, String, String, Int, Int, String, String, Boolean, String, Int, String) -> Unit
+    onSave: (List<Category>, String, String, String, Int, Int, Int, String, String, Boolean, String, Int, String) -> Unit
 ) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE) }
 
     var currentScreen by remember { mutableStateOf(NovaScreen.HOME) }
     var editingCategoryId by remember { mutableStateOf<String?>(null) }
-
     var mainSearchQuery by remember { mutableStateOf("") }
 
     var showSettingsDialog by remember { mutableStateOf(false) }
@@ -295,54 +290,31 @@ fun MainScreen(
             try {
                 val type = object : TypeToken<List<Category>>() {}.type
                 Gson().fromJson<List<Category>>(rawJson, type) ?: emptyList()
-            } catch (_: Exception) {
-                emptyList()
-            }
-        } else {
-            emptyList()
-        }
+            } catch (_: Exception) { emptyList() }
+        } else emptyList()
         mutableStateOf(initial)
     }
 
-    var sidebarPosition by remember {
-        mutableStateOf(prefs.getString("sidebar_position", "left") ?: "left")
-    }
-    var sidebarAlignment by remember {
-        mutableStateOf(prefs.getString("sidebar_alignment", "bottom") ?: "bottom")
-    }
-    var sidebarDisplayType by remember {
-        mutableStateOf(prefs.getString("sidebar_display_type", "icons") ?: "icons")
-    }
-    var sidebarSizeSp by remember {
-        mutableFloatStateOf(prefs.getInt("sidebar_icon_size_sp", 14).toFloat())
-    }
-    var categoryIconSizeDp by remember {
-        mutableFloatStateOf(prefs.getInt("category_icon_size_dp", 46).toFloat())
-    }
-    var sidebarFont by remember {
-        mutableStateOf(prefs.getString("sidebar_font_family", "sans-serif") ?: "sans-serif")
-    }
+    var sidebarPosition by remember { mutableStateOf(prefs.getString("sidebar_position", "left") ?: "left") }
+    var sidebarAlignment by remember { mutableStateOf(prefs.getString("sidebar_alignment", "bottom") ?: "bottom") }
+    var sidebarDisplayType by remember { mutableStateOf(prefs.getString("sidebar_display_type", "icons") ?: "icons") }
+    
+    // Separate Text and Icon Sliders
+    var sidebarTextSizeSp by remember { mutableFloatStateOf(prefs.getInt("sidebar_text_size_sp", 14).toFloat()) }
+    var sidebarIconSizeSp by remember { mutableFloatStateOf(prefs.getInt("sidebar_icon_size_sp", 28).toFloat()) }
+    var categoryIconSizeDp by remember { mutableFloatStateOf(prefs.getInt("category_icon_size_dp", 46).toFloat()) }
+    
+    var sidebarFont by remember { mutableStateOf(prefs.getString("sidebar_font_family", "sans-serif") ?: "sans-serif") }
     var unifiedIconStyle by remember {
         val saved = prefs.getString("unified_icon_style", "default") ?: "default"
         mutableStateOf(if (saved == "white" || saved == "black") "default" else saved)
     }
-    var installedIconPacks by remember {
-        mutableStateOf<List<AppModel>>(emptyList())
-    }
+    var installedIconPacks by remember { mutableStateOf<List<AppModel>>(emptyList()) }
+    var animationStyle by remember { mutableStateOf(prefs.getString("animation_style", "fade") ?: "fade") }
 
-    var animationStyle by remember {
-        mutableStateOf(prefs.getString("animation_style", "fade") ?: "fade")
-    }
-
-    var clockEnabled by remember {
-        mutableStateOf(prefs.getBoolean("clock_enabled", true))
-    }
-    var clockFont by remember {
-        mutableStateOf(prefs.getString("clock_font", "sans-serif") ?: "sans-serif")
-    }
-    var clockSizeSp by remember {
-        mutableFloatStateOf(prefs.getInt("clock_size_sp", 26).toFloat())
-    }
+    var clockEnabled by remember { mutableStateOf(prefs.getBoolean("clock_enabled", true)) }
+    var clockFont by remember { mutableStateOf(prefs.getString("clock_font", "sans-serif") ?: "sans-serif") }
+    var clockSizeSp by remember { mutableFloatStateOf(prefs.getInt("clock_size_sp", 26).toFloat()) }
 
     val cachedList = remember { AppRepository.getCachedApps(context) }
     var installedApps by remember { mutableStateOf(cachedList) }
@@ -392,7 +364,6 @@ fun MainScreen(
                 ))
             }
         }
-
         list.sortedWith(
             compareByDescending<AppModel> { app ->
                 selectedSet.contains(app.id) || selectedSet.contains(app.packageName)
@@ -515,7 +486,8 @@ fun MainScreen(
                     sidebarPosition = sidebarPosition,
                     sidebarAlignment = sidebarAlignment,
                     sidebarDisplayType = sidebarDisplayType,
-                    sidebarSizeSp = sidebarSizeSp.toInt(),
+                    sidebarTextSizeSp = sidebarTextSizeSp.toInt(),
+                    sidebarIconSizeSp = sidebarIconSizeSp.toInt(),
                     categoryIconSizeDp = categoryIconSizeDp.toInt(),
                     sidebarFontFamily = sidebarFont,
                     unifiedIconStyle = unifiedIconStyle,
@@ -530,9 +502,7 @@ fun MainScreen(
                     out.write(jsonContent.toByteArray(Charsets.UTF_8))
                 }
                 Toast.makeText(context, "Backup exported successfully!", Toast.LENGTH_SHORT).show()
-            } catch (e: Exception) {
-                Toast.makeText(context, "Failed to export: ${e.message}", Toast.LENGTH_SHORT).show()
-            }
+            } catch (e: Exception) {}
         }
     }
 
@@ -570,7 +540,11 @@ fun MainScreen(
                         sidebarPosition = backupBundle.sidebarPosition
                         sidebarAlignment = backupBundle.sidebarAlignment
                         sidebarDisplayType = backupBundle.sidebarDisplayType
-                        sidebarSizeSp = backupBundle.sidebarSizeSp.toFloat()
+                        
+                        // Handle backwards compatibility for single size sp
+                        sidebarTextSizeSp = backupBundle.sidebarTextSizeSp.toFloat().takeIf { it > 0f } ?: backupBundle.sidebarSizeSp.toFloat()
+                        sidebarIconSizeSp = backupBundle.sidebarIconSizeSp.toFloat().takeIf { it > 0f } ?: backupBundle.sidebarSizeSp.toFloat()
+                        
                         categoryIconSizeDp = backupBundle.categoryIconSizeDp.toFloat()
                         sidebarFont = backupBundle.sidebarFontFamily
                         unifiedIconStyle = backupBundle.unifiedIconStyle
@@ -584,7 +558,8 @@ fun MainScreen(
                             .putString("sidebar_position", backupBundle.sidebarPosition)
                             .putString("sidebar_alignment", backupBundle.sidebarAlignment)
                             .putString("sidebar_display_type", backupBundle.sidebarDisplayType)
-                            .putInt("sidebar_icon_size_sp", backupBundle.sidebarSizeSp)
+                            .putInt("sidebar_text_size_sp", sidebarTextSizeSp.toInt())
+                            .putInt("sidebar_icon_size_sp", sidebarIconSizeSp.toInt())
                             .putInt("category_icon_size_dp", backupBundle.categoryIconSizeDp)
                             .putString("sidebar_font_family", backupBundle.sidebarFontFamily)
                             .putString("unified_icon_style", backupBundle.unifiedIconStyle)
@@ -602,9 +577,7 @@ fun MainScreen(
                         Toast.makeText(context, "Backup restored successfully!", Toast.LENGTH_SHORT).show()
                     }
                 }
-            } catch (e: Exception) {
-                Toast.makeText(context, "Failed to restore: ${e.message}", Toast.LENGTH_SHORT).show()
-            }
+            } catch (e: Exception) {}
         }
     }
 
@@ -634,9 +607,7 @@ fun MainScreen(
                     showIconDialog = false
                     Toast.makeText(context, "Gallery Icon Applied!", Toast.LENGTH_SHORT).show()
                 }
-            } catch (_: Exception) {
-                Toast.makeText(context, "Failed to load image", Toast.LENGTH_SHORT).show()
-            }
+            } catch (_: Exception) {}
         }
     }
 
@@ -732,49 +703,29 @@ fun MainScreen(
             }
         },
         bottomBar = {
-            // Nova Bottom Navigation Bar
             Surface(
                 color = theme.bottomBarBg,
                 modifier = Modifier.fillMaxWidth().height(68.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Settings Pill Tab (Active indicator)
+                    // Central Save & Apply Full-Width Action
                     Row(
                         modifier = Modifier
+                            .fillMaxWidth()
                             .clip(RoundedCornerShape(22.dp))
                             .background(theme.pillActive)
-                            .clickable {
-                                editingCategoryId = null
-                                currentScreen = NovaScreen.HOME
-                            }
-                            .padding(horizontal = 20.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        NovaOutlineIcon(type = IconType.SETTINGS, tint = theme.textPrimary, size = 18.dp)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Settings",
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 14.sp,
-                            color = theme.textPrimary
-                        )
-                    }
-
-                    // Save & Apply Action
-                    Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(22.dp))
                             .clickable {
                                 onSave(
                                     categories,
                                     sidebarPosition,
                                     sidebarAlignment,
                                     sidebarDisplayType,
-                                    sidebarSizeSp.toInt(),
+                                    sidebarTextSizeSp.toInt(),
+                                    sidebarIconSizeSp.toInt(),
                                     categoryIconSizeDp.toInt(),
                                     sidebarFont,
                                     unifiedIconStyle,
@@ -784,16 +735,17 @@ fun MainScreen(
                                     animationStyle
                                 )
                             }
-                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        NovaOutlineIcon(type = IconType.CHECK, tint = theme.textSecondary, size = 18.dp)
+                        NovaOutlineIcon(type = IconType.CHECK, tint = theme.textPrimary, size = 18.dp)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Apply",
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 14.sp,
-                            color = theme.textSecondary
+                            text = "Save & Apply Changes",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = theme.textPrimary
                         )
                     }
                 }
@@ -1244,7 +1196,7 @@ fun MainScreen(
                         item {
                             NovaSettingsCard(
                                 title = "Sidebar Item Size",
-                                subtitle = "Control text label size, symbol size, and gallery icon scale.",
+                                subtitle = "Independently adjust the scale of text labels and symbol/gallery icons.",
                                 theme = theme
                             ) {
                                 Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
@@ -1253,13 +1205,34 @@ fun MainScreen(
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text("Item Scale", fontSize = 14.sp, color = theme.textPrimary, fontWeight = FontWeight.Medium)
-                                        Text("${sidebarSizeSp.toInt()} sp", fontSize = 14.sp, color = theme.textSecondary, fontWeight = FontWeight.Bold)
+                                        Text("Text Size Scale", fontSize = 14.sp, color = theme.textPrimary, fontWeight = FontWeight.Medium)
+                                        Text("${sidebarTextSizeSp.toInt()} sp", fontSize = 14.sp, color = theme.textSecondary, fontWeight = FontWeight.Bold)
                                     }
                                     Slider(
-                                        value = sidebarSizeSp,
-                                        onValueChange = { sidebarSizeSp = it },
+                                        value = sidebarTextSizeSp,
+                                        onValueChange = { sidebarTextSizeSp = it },
                                         valueRange = 10f..22f,
+                                        colors = SliderDefaults.colors(
+                                            thumbColor = theme.textPrimary,
+                                            activeTrackColor = theme.textPrimary,
+                                            inactiveTrackColor = theme.cardBorder
+                                        )
+                                    )
+                                    
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("Icon / Gallery Scale", fontSize = 14.sp, color = theme.textPrimary, fontWeight = FontWeight.Medium)
+                                        Text("${sidebarIconSizeSp.toInt()} sp", fontSize = 14.sp, color = theme.textSecondary, fontWeight = FontWeight.Bold)
+                                    }
+                                    Slider(
+                                        value = sidebarIconSizeSp,
+                                        onValueChange = { sidebarIconSizeSp = it },
+                                        valueRange = 10f..50f,
                                         colors = SliderDefaults.colors(
                                             thumbColor = theme.textPrimary,
                                             activeTrackColor = theme.textPrimary,
@@ -1566,7 +1539,8 @@ fun MainScreen(
                         sidebarPosition = "left"
                         sidebarAlignment = "bottom"
                         sidebarDisplayType = "icons"
-                        sidebarSizeSp = 14f
+                        sidebarTextSizeSp = 14f
+                        sidebarIconSizeSp = 28f
                         categoryIconSizeDp = 46f
                         sidebarFont = "sans-serif"
                         unifiedIconStyle = "default"
@@ -1891,6 +1865,7 @@ fun MainScreen(
 
     // Rename Category Dialog
     if (showRenameDialog) {
+        val currentCat = categories.firstOrNull { it.id == editingCategoryId }
         AlertDialog(
             onDismissRequest = { showRenameDialog = false },
             title = { Text("Rename Category", fontWeight = FontWeight.Bold, color = theme.textPrimary) },
@@ -1916,9 +1891,9 @@ fun MainScreen(
                 Button(
                     onClick = {
                         val trimmed = renameValue.trim()
-                        if (trimmed.isNotEmpty() && currentCategory != null) {
+                        if (trimmed.isNotEmpty() && currentCat != null) {
                             categories = categories.map {
-                                if (it.id == currentCategory.id) it.copy(name = trimmed) else it
+                                if (it.id == currentCat.id) it.copy(name = trimmed) else it
                             }
                             showRenameDialog = false
                         }
@@ -2105,7 +2080,6 @@ enum class IconType {
     CHECK
 }
 
-// Crisp, standalone Vector Outline Icons matching Nova Launcher
 @Composable
 fun NovaOutlineIcon(type: IconType, tint: Color, size: Dp) {
     Canvas(modifier = Modifier.size(size)) {
@@ -2115,7 +2089,6 @@ fun NovaOutlineIcon(type: IconType, tint: Color, size: Dp) {
 
         when (type) {
             IconType.CATEGORIES -> {
-                // 4 squares outline
                 val s = w * 0.38f
                 drawRoundRect(tint, Offset(w * 0.08f, h * 0.08f), Size(s, s), CornerRadius(4f), stroke)
                 drawRoundRect(tint, Offset(w * 0.54f, h * 0.08f), Size(s, s), CornerRadius(4f), stroke)
@@ -2123,12 +2096,10 @@ fun NovaOutlineIcon(type: IconType, tint: Color, size: Dp) {
                 drawRoundRect(tint, Offset(w * 0.54f, h * 0.54f), Size(s, s), CornerRadius(4f), stroke)
             }
             IconType.SIDEBAR -> {
-                // Layout with left dock
                 drawRoundRect(tint, Offset(w * 0.1f, h * 0.1f), Size(w * 0.8f, h * 0.8f), CornerRadius(8f), stroke)
                 drawLine(tint, Offset(w * 0.38f, h * 0.1f), Offset(w * 0.38f, h * 0.9f), strokeWidth = 2.dp.toPx())
             }
             IconType.ANIMATION -> {
-                // Play / Motion diamond
                 val path = Path().apply {
                     moveTo(w * 0.2f, h * 0.15f)
                     lineTo(w * 0.85f, h * 0.5f)
@@ -2138,28 +2109,23 @@ fun NovaOutlineIcon(type: IconType, tint: Color, size: Dp) {
                 drawPath(path, tint, style = stroke)
             }
             IconType.ICONS -> {
-                // Palette shape
                 drawCircle(tint, radius = w * 0.38f, center = Offset(w * 0.5f, h * 0.5f), style = stroke)
                 drawCircle(tint, radius = w * 0.08f, center = Offset(w * 0.35f, h * 0.38f))
                 drawCircle(tint, radius = w * 0.08f, center = Offset(w * 0.65f, h * 0.38f))
             }
             IconType.BACKUP -> {
-                // Cloud / Archive storage
                 drawRoundRect(tint, Offset(w * 0.15f, h * 0.25f), Size(w * 0.7f, h * 0.55f), CornerRadius(6f), stroke)
                 drawLine(tint, Offset(w * 0.35f, h * 0.52f), Offset(w * 0.65f, h * 0.52f), strokeWidth = 2.dp.toPx())
             }
             IconType.SEARCH -> {
-                // Magnifying glass
                 drawCircle(tint, radius = w * 0.32f, center = Offset(w * 0.42f, h * 0.42f), style = stroke)
                 drawLine(tint, Offset(w * 0.66f, h * 0.66f), Offset(w * 0.92f, h * 0.92f), strokeWidth = 2.dp.toPx())
             }
             IconType.SETTINGS -> {
-                // Gear outline
                 drawCircle(tint, radius = w * 0.22f, center = Offset(w * 0.5f, h * 0.5f), style = stroke)
                 drawCircle(tint, radius = w * 0.40f, center = Offset(w * 0.5f, h * 0.5f), style = stroke)
             }
             IconType.CHECK -> {
-                // Checkmark
                 val path = Path().apply {
                     moveTo(w * 0.2f, h * 0.52f)
                     lineTo(w * 0.42f, h * 0.75f)

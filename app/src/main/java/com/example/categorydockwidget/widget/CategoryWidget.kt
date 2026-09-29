@@ -33,6 +33,7 @@ class CategoryWidgetProvider : AppWidgetProvider() {
     companion object {
         const val ACTION_SWITCH_CATEGORY = "com.example.categorydockwidget.ACTION_SWITCH_CATEGORY"
         const val ACTION_LAUNCH_APP = "com.example.categorydockwidget.ACTION_LAUNCH_APP"
+        const val ACTION_TOGGLE_APPS = "com.example.categorydockwidget.ACTION_TOGGLE_APPS"
         const val EXTRA_CATEGORY_ID = "extra_category_id"
         const val EXTRA_PACKAGE_NAME = "extra_package_name"
 
@@ -70,8 +71,8 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             sizeSp: Float,
             isSelected: Boolean
         ): Bitmap {
-            val width = 120
-            val height = 80
+            val width = 160
+            val height = 120
             val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(bitmap)
 
@@ -106,13 +107,13 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                 if (!file.exists()) return null
                 val source = BitmapFactory.decodeFile(file.absolutePath) ?: return null
 
-                val targetDim = (sizeSp * 3.0f).toInt().coerceIn(24, 76)
-                val output = Bitmap.createBitmap(120, 80, Bitmap.Config.ARGB_8888)
+                val targetDim = (sizeSp * 2.2f).toInt().coerceIn(24, 110)
+                val output = Bitmap.createBitmap(160, 120, Bitmap.Config.ARGB_8888)
                 val canvas = Canvas(output)
                 val scaled = Bitmap.createScaledBitmap(source, targetDim, targetDim, true)
 
-                val left = (120 - targetDim) / 2f
-                val top = (80 - targetDim) / 2f
+                val left = (160 - targetDim) / 2f
+                val top = (120 - targetDim) / 2f
                 canvas.drawBitmap(scaled, left, top, null)
                 output
             } catch (_: Exception) {
@@ -120,7 +121,6 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             }
         }
 
-        // Resolves layout with safe fallback
         fun getLayoutRes(context: Context, sidebarPosition: String, animStyle: String): Int {
             val isRight = sidebarPosition == "right"
             val layoutName = when (animStyle) {
@@ -130,7 +130,6 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                 "none" -> if (isRight) "widget_category_dock_none" else "widget_category_dock_left_none"
                 else -> if (isRight) "widget_category_dock" else "widget_category_dock_left"
             }
-
             val id = context.resources.getIdentifier(layoutName, "layout", context.packageName)
             return if (id != 0) id else {
                 if (isRight) R.layout.widget_category_dock else R.layout.widget_category_dock_left
@@ -150,21 +149,17 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             prefs.edit()
                 .putString("selected_category_$appWidgetId", newCatId)
                 .putInt("active_flipper_slot_$appWidgetId", nextSlot)
+                .putBoolean("hide_apps_$appWidgetId", false) // Force show apps on category click
                 .apply()
 
             val nextGridId = if (nextSlot == 0) R.id.app_grid_view_0 else R.id.app_grid_view_1
-
             val rawJson = prefs.getString("categories_json", null)
             val categories: List<Category> = if (rawJson != null) {
                 try {
                     val type = object : TypeToken<List<Category>>() {}.type
                     Gson().fromJson(rawJson, type) ?: emptyList()
-                } catch (_: Exception) {
-                    emptyList()
-                }
-            } else {
-                emptyList()
-            }
+                } catch (_: Exception) { emptyList() }
+            } else emptyList()
 
             val sidebarPosition = prefs.getString("sidebar_position", "left") ?: "left"
             val animStyle = prefs.getString("animation_style", "fade") ?: "fade"
@@ -172,13 +167,15 @@ class CategoryWidgetProvider : AppWidgetProvider() {
 
             val partialViews = RemoteViews(context.packageName, layoutRes)
 
+            // Keep Flipper visible
+            partialViews.setViewVisibility(R.id.app_view_flipper, View.VISIBLE)
+
             for (j in CAT_CONTAINER_IDS.indices) {
                 if (j < categories.size) {
                     val cat = categories[j]
-                    val isSelected = cat.id == newCatId
                     partialViews.setImageViewResource(
                         CAT_BG_IDS[j],
-                        if (isSelected) R.drawable.pill_active else R.drawable.pill_inactive
+                        if (cat.id == newCatId) R.drawable.pill_active else R.drawable.pill_inactive
                     )
                 }
             }
@@ -196,30 +193,32 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                 val sidebarPosition = prefs.getString("sidebar_position", "left") ?: "left"
                 val sidebarAlignment = prefs.getString("sidebar_alignment", "bottom") ?: "bottom"
                 val sidebarDisplay = prefs.getString("sidebar_display_type", "icons") ?: "icons"
-                val sidebarSizeSp = prefs.getInt("sidebar_icon_size_sp", 14)
                 val sidebarFont = prefs.getString("sidebar_font_family", "sans-serif") ?: "sans-serif"
                 val animStyle = prefs.getString("animation_style", "fade") ?: "fade"
+
+                val sidebarTextSizeSp = prefs.getInt("sidebar_text_size_sp", 14)
+                val sidebarIconSizeSp = prefs.getInt("sidebar_icon_size_sp", 28)
 
                 val clockEnabled = prefs.getBoolean("clock_enabled", true)
                 val clockFont = prefs.getString("clock_font", "sans-serif") ?: "sans-serif"
                 val clockSizeSp = prefs.getInt("clock_size_sp", 26)
+                val hideApps = prefs.getBoolean("hide_apps_$appWidgetId", false)
 
                 val categories: List<Category> = if (rawJson != null) {
                     try {
                         val type = object : TypeToken<List<Category>>() {}.type
                         Gson().fromJson(rawJson, type) ?: emptyList()
-                    } catch (_: Exception) {
-                        emptyList()
-                    }
-                } else {
-                    emptyList()
-                }
+                    } catch (_: Exception) { emptyList() }
+                } else emptyList()
 
                 val layoutRes = getLayoutRes(context, sidebarPosition, animStyle)
                 val views = RemoteViews(context.packageName, layoutRes)
                 val activeCategory = categories.firstOrNull { it.id == selectedId } ?: categories.firstOrNull()
 
-                // 1. Clock Configuration
+                // Hide apps logic
+                views.setViewVisibility(R.id.app_view_flipper, if (hideApps) View.INVISIBLE else View.VISIBLE)
+
+                // 1. Clock Configuration & Toggle Intent
                 if (clockEnabled) {
                     views.setViewVisibility(R.id.clock_container, View.VISIBLE)
                     views.setTextViewTextSize(R.id.clock_hours, TypedValue.COMPLEX_UNIT_SP, clockSizeSp.toFloat())
@@ -237,6 +236,15 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                     })
                     views.setCharSequence(R.id.clock_minutes, "setFormat12Hour", formatM)
                     views.setCharSequence(R.id.clock_minutes, "setFormat24Hour", formatM)
+
+                    val toggleIntent = Intent(context, CategoryWidgetProvider::class.java).apply {
+                        action = ACTION_TOGGLE_APPS
+                        putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+                    }
+                    val pendingToggle = PendingIntent.getBroadcast(
+                        context, appWidgetId * 100, toggleIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                    )
+                    views.setOnClickPendingIntent(R.id.clock_container, pendingToggle)
                 } else {
                     views.setViewVisibility(R.id.clock_container, View.GONE)
                 }
@@ -260,26 +268,19 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                         val isSelected = cat.id == activeCategory?.id
 
                         if (cat.isGallery && cat.galleryFileName != null) {
-                            val galleryBmp = createGalleryIconBitmap(context, cat.galleryFileName!!, sidebarSizeSp.toFloat())
+                            val galleryBmp = createGalleryIconBitmap(context, cat.galleryFileName!!, sidebarIconSizeSp.toFloat())
                             if (galleryBmp != null) {
                                 views.setImageViewBitmap(iconId, galleryBmp)
                             } else {
-                                val fallbackBmp = createTextBadgeBitmap(cat.name.take(3).uppercase(), sidebarFont, sidebarSizeSp.toFloat(), isSelected)
+                                val fallbackBmp = createTextBadgeBitmap(cat.name.take(3).uppercase(), sidebarFont, sidebarTextSizeSp.toFloat(), isSelected)
                                 views.setImageViewBitmap(iconId, fallbackBmp)
                             }
                         } else {
-                            val displayText = if (sidebarDisplay == "heading" || sidebarDisplay == "text") {
-                                cat.name.take(4).uppercase()
-                            } else {
-                                cat.displayBadge
-                            }
+                            val isTextLabel = sidebarDisplay == "heading" || sidebarDisplay == "text" || cat.icon.isNullOrBlank()
+                            val displayText = if (isTextLabel) cat.name.take(4).uppercase() else cat.displayBadge
+                            val sizeSp = if (isTextLabel) sidebarTextSizeSp else sidebarIconSizeSp
 
-                            val badgeBmp = createTextBadgeBitmap(
-                                displayText,
-                                sidebarFont,
-                                sidebarSizeSp.toFloat(),
-                                isSelected
-                            )
+                            val badgeBmp = createTextBadgeBitmap(displayText, sidebarFont, sizeSp.toFloat(), isSelected)
                             views.setImageViewBitmap(iconId, badgeBmp)
                         }
 
@@ -306,7 +307,7 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                     }
                 }
 
-                // 4. Bind Both Flipper Grid Buffers
+                // 4. Bind Flipper Grid Buffers
                 val currentSlot = prefs.getInt("active_flipper_slot_$appWidgetId", 0)
                 views.setDisplayedChild(R.id.app_view_flipper, currentSlot)
 
@@ -358,17 +359,28 @@ class CategoryWidgetProvider : AppWidgetProvider() {
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
+        val appWidgetManager = AppWidgetManager.getInstance(context)
+        val appWidgetId = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
+        if (appWidgetId == AppWidgetManager.INVALID_APPWIDGET_ID) return
+
         when (intent.action) {
+            ACTION_TOGGLE_APPS -> {
+                val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
+                val isHidden = prefs.getBoolean("hide_apps_$appWidgetId", false)
+                prefs.edit().putBoolean("hide_apps_$appWidgetId", !isHidden).apply()
+                
+                // Fast partial update to hide/show Flipper
+                val sidebarPosition = prefs.getString("sidebar_position", "left") ?: "left"
+                val animStyle = prefs.getString("animation_style", "fade") ?: "fade"
+                val layoutRes = getLayoutRes(context, sidebarPosition, animStyle)
+                val partialViews = RemoteViews(context.packageName, layoutRes)
+                
+                partialViews.setViewVisibility(R.id.app_view_flipper, if (!isHidden) View.INVISIBLE else View.VISIBLE)
+                appWidgetManager.partiallyUpdateAppWidget(appWidgetId, partialViews)
+            }
             ACTION_SWITCH_CATEGORY -> {
                 val catId = intent.getStringExtra(EXTRA_CATEGORY_ID) ?: return
-                val appWidgetId = intent.getIntExtra(
-                    AppWidgetManager.EXTRA_APPWIDGET_ID,
-                    AppWidgetManager.INVALID_APPWIDGET_ID
-                )
-                if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
-                    val appWidgetManager = AppWidgetManager.getInstance(context)
-                    switchCategorySeamless(context, appWidgetManager, appWidgetId, catId)
-                }
+                switchCategorySeamless(context, appWidgetManager, appWidgetId, catId)
             }
             ACTION_LAUNCH_APP -> {
                 val pkg = intent.getStringExtra(EXTRA_PACKAGE_NAME) ?: return
