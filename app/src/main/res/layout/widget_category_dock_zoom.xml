@@ -6,16 +6,14 @@
     android:orientation="horizontal"
     android:padding="6dp">
 
-    <include layout="@layout/widget_sidebar" />
-
     <ViewFlipper
         android:id="@+id/app_view_flipper"
         android:layout_width="0dp"
         android:layout_height="match_parent"
-        android:layout_marginStart="4dp"
+        android:layout_marginEnd="4dp"
         android:layout_weight="1"
-        android:inAnimation="@android:anim/fade_in"
-        android:outAnimation="@android:anim/fade_out">
+        android:inAnimation="@anim/zoom_in"
+        android:outAnimation="@anim/zoom_out">
 
         <GridView
             android:id="@+id/app_grid_view_0"
@@ -37,4 +35,6 @@
             android:stretchMode="columnWidth"
             android:verticalSpacing="4dp" />
     </ViewFlipper>
+
+    <include layout="@layout/widget_sidebar" />
 </LinearLayout>

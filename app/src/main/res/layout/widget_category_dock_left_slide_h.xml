@@ -14,8 +14,8 @@
         android:layout_height="match_parent"
         android:layout_marginStart="4dp"
         android:layout_weight="1"
-        android:inAnimation="@android:anim/fade_in"
-        android:outAnimation="@android:anim/fade_out">
+        android:inAnimation="@android:anim/slide_in_left"
+        android:outAnimation="@android:anim/slide_out_right">
 
         <GridView
             android:id="@+id/app_grid_view_0"

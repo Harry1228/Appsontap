@@ -120,7 +120,23 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             }
         }
 
-        // Animated Dual-Buffered Crossfade Switch
+        // Resolves layout with safe fallback
+        fun getLayoutRes(context: Context, sidebarPosition: String, animStyle: String): Int {
+            val isRight = sidebarPosition == "right"
+            val layoutName = when (animStyle) {
+                "slide_h" -> if (isRight) "widget_category_dock_slide_h" else "widget_category_dock_left_slide_h"
+                "slide_v" -> if (isRight) "widget_category_dock_slide_v" else "widget_category_dock_left_slide_v"
+                "zoom" -> if (isRight) "widget_category_dock_zoom" else "widget_category_dock_left_zoom"
+                "none" -> if (isRight) "widget_category_dock_none" else "widget_category_dock_left_none"
+                else -> if (isRight) "widget_category_dock" else "widget_category_dock_left"
+            }
+
+            val id = context.resources.getIdentifier(layoutName, "layout", context.packageName)
+            return if (id != 0) id else {
+                if (isRight) R.layout.widget_category_dock else R.layout.widget_category_dock_left
+            }
+        }
+
         fun switchCategorySeamless(
             context: Context,
             appWidgetManager: AppWidgetManager,
@@ -151,15 +167,11 @@ class CategoryWidgetProvider : AppWidgetProvider() {
             }
 
             val sidebarPosition = prefs.getString("sidebar_position", "left") ?: "left"
-            val layoutRes = if (sidebarPosition == "right") {
-                R.layout.widget_category_dock
-            } else {
-                R.layout.widget_category_dock_left
-            }
+            val animStyle = prefs.getString("animation_style", "fade") ?: "fade"
+            val layoutRes = getLayoutRes(context, sidebarPosition, animStyle)
 
             val partialViews = RemoteViews(context.packageName, layoutRes)
 
-            // Update pill highlight states
             for (j in CAT_CONTAINER_IDS.indices) {
                 if (j < categories.size) {
                     val cat = categories[j]
@@ -171,7 +183,6 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                 }
             }
 
-            // Update the incoming grid and trigger the crossfade transition
             appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, nextGridId)
             partialViews.setDisplayedChild(R.id.app_view_flipper, nextSlot)
             appWidgetManager.partiallyUpdateAppWidget(appWidgetId, partialViews)
@@ -187,6 +198,7 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                 val sidebarDisplay = prefs.getString("sidebar_display_type", "icons") ?: "icons"
                 val sidebarSizeSp = prefs.getInt("sidebar_icon_size_sp", 14)
                 val sidebarFont = prefs.getString("sidebar_font_family", "sans-serif") ?: "sans-serif"
+                val animStyle = prefs.getString("animation_style", "fade") ?: "fade"
 
                 val clockEnabled = prefs.getBoolean("clock_enabled", true)
                 val clockFont = prefs.getString("clock_font", "sans-serif") ?: "sans-serif"
@@ -203,12 +215,7 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                     emptyList()
                 }
 
-                val layoutRes = if (sidebarPosition == "right") {
-                    R.layout.widget_category_dock
-                } else {
-                    R.layout.widget_category_dock_left
-                }
-
+                val layoutRes = getLayoutRes(context, sidebarPosition, animStyle)
                 val views = RemoteViews(context.packageName, layoutRes)
                 val activeCategory = categories.firstOrNull { it.id == selectedId } ?: categories.firstOrNull()
 
@@ -315,7 +322,6 @@ class CategoryWidgetProvider : AppWidgetProvider() {
                 }
                 views.setRemoteAdapter(R.id.app_grid_view_1, serviceIntent1)
 
-                // Fill-in Intent Template for both grids
                 val launchIntent = Intent(context, CategoryWidgetProvider::class.java).apply {
                     action = ACTION_LAUNCH_APP
                     putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)

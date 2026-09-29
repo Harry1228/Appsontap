@@ -74,7 +74,8 @@ data class WidgetFullBackup(
     val unifiedIconStyle: String,
     val clockEnabled: Boolean,
     val clockFont: String,
-    val clockSizeSp: Int
+    val clockSizeSp: Int,
+    val animationStyle: String = "fade"
 )
 
 class WidgetConfigActivity : ComponentActivity() {
@@ -100,8 +101,8 @@ class WidgetConfigActivity : ComponentActivity() {
                     color = Color(0xFFF8F7FC)
                 ) {
                     MainScreen(
-                        onSave = { updatedCategories, pos, align, display, sidebarSp, appDp, font, unifiedStyle, clockEnabled, clockFont, clockSize ->
-                            saveAndSync(updatedCategories, pos, align, display, sidebarSp, appDp, font, unifiedStyle, clockEnabled, clockFont, clockSize, appWidgetId)
+                        onSave = { updatedCategories, pos, align, display, sidebarSp, appDp, font, unifiedStyle, clockEnabled, clockFont, clockSize, animStyle ->
+                            saveAndSync(updatedCategories, pos, align, display, sidebarSp, appDp, font, unifiedStyle, clockEnabled, clockFont, clockSize, animStyle, appWidgetId)
                         }
                     )
                 }
@@ -113,7 +114,7 @@ class WidgetConfigActivity : ComponentActivity() {
         categories: List<Category>,
         sidebarPosition: String,
         sidebarAlignment: String,
-        sidebarDisplay: String,
+        sidebarDisplayType: String,
         sidebarSizeSp: Int,
         categoryIconSizeDp: Int,
         sidebarFont: String,
@@ -121,6 +122,7 @@ class WidgetConfigActivity : ComponentActivity() {
         clockEnabled: Boolean,
         clockFont: String,
         clockSizeSp: Int,
+        animationStyle: String,
         appWidgetId: Int
     ) {
         val prefs = getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
@@ -134,7 +136,7 @@ class WidgetConfigActivity : ComponentActivity() {
             .putString("categories_json", Gson().toJson(categories))
             .putString("sidebar_position", sidebarPosition)
             .putString("sidebar_alignment", sidebarAlignment)
-            .putString("sidebar_display_type", sidebarDisplay)
+            .putString("sidebar_display_type", sidebarDisplayType)
             .putInt("sidebar_icon_size_sp", sidebarSizeSp)
             .putInt("category_icon_size_dp", categoryIconSizeDp)
             .putString("sidebar_font_family", sidebarFont)
@@ -142,6 +144,7 @@ class WidgetConfigActivity : ComponentActivity() {
             .putBoolean("clock_enabled", clockEnabled)
             .putString("clock_font", clockFont)
             .putInt("clock_size_sp", clockSizeSp)
+            .putString("animation_style", animationStyle)
             .apply()
 
         AppIconHelper.prewarmIcons(this, categories)
@@ -196,7 +199,7 @@ fun CategoryBadgeView(category: Category, size: Dp, modifier: Modifier = Modifie
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
-    onSave: (List<Category>, String, String, String, Int, Int, String, String, Boolean, String, Int) -> Unit
+    onSave: (List<Category>, String, String, String, Int, Int, String, String, Boolean, String, Int, String) -> Unit
 ) {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE) }
@@ -214,7 +217,6 @@ fun MainScreen(
     var showFontDialog by remember { mutableStateOf(false) }
     var showClockFontDialog by remember { mutableStateOf(false) }
 
-    // App-specific icon customization state
     var editingAppForIcon by remember { mutableStateOf<AppModel?>(null) }
     var iconUpdateCounter by remember { mutableIntStateOf(0) }
 
@@ -259,6 +261,11 @@ fun MainScreen(
         mutableStateOf<List<AppModel>>(emptyList())
     }
 
+    // Animation Style State
+    var animationStyle by remember {
+        mutableStateOf(prefs.getString("animation_style", "fade") ?: "fade")
+    }
+
     var clockEnabled by remember {
         mutableStateOf(prefs.getBoolean("clock_enabled", true))
     }
@@ -291,7 +298,6 @@ fun MainScreen(
         currentCategory?.packageNames?.toSet() ?: emptySet()
     }
 
-    // 1. FILTER & SORT: Selected apps float automatically to the top
     val filteredApps = remember(searchQuery, installedApps, selectedSet) {
         val query = searchQuery.trim().lowercase()
         val list = if (query.isBlank()) {
@@ -311,7 +317,6 @@ fun MainScreen(
             }
         }
 
-        // Float selected apps directly to top
         list.sortedWith(
             compareByDescending<AppModel> { app ->
                 selectedSet.contains(app.id) || selectedSet.contains(app.packageName)
@@ -319,23 +324,15 @@ fun MainScreen(
         )
     }
 
-    // Modern Minimal Category & App Symbols
     val modernCuratedSymbols = listOf(
-        // Core & Action
         "⌂", "✦", "◈", "⌘", "⚡", "⚙", "◉", "★",
-        // Communication
         "✆", "✉", "💬", "◎", "👥", "🔔", "📣", "📡",
-        // Finance
         "💳", "🏛", "💼", "₹", "$", "📈", "💰", "🏷",
-        // Tools & Tech
         "🛠", "✎", "⌕", "📁", "🔒", "⊞", "▦", "⬡",
-        // Media & Entertainment
         "▶", "♫", "🎬", "📷", "🎮", "🕹", "🎧", "📺",
-        // Travel & Lifestyle
         "✈", "🧭", "🚗", "☕", "🛒", "🛍", "♥", "⏱"
     )
 
-    // Launcher for App-Specific Custom Gallery Icon
     val appGalleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -369,7 +366,6 @@ fun MainScreen(
         }
     }
 
-    // 5. NOVA-STYLE APP SHORTCUT PICKER
     val shortcutPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -416,7 +412,6 @@ fun MainScreen(
         }
     }
 
-    // Backup Export
     val exportBackupLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
     ) { uri: Uri? ->
@@ -450,7 +445,8 @@ fun MainScreen(
                     unifiedIconStyle = unifiedIconStyle,
                     clockEnabled = clockEnabled,
                     clockFont = clockFont,
-                    clockSizeSp = clockSizeSp.toInt()
+                    clockSizeSp = clockSizeSp.toInt(),
+                    animationStyle = animationStyle
                 )
 
                 val jsonContent = Gson().toJson(backupBundle)
@@ -464,7 +460,6 @@ fun MainScreen(
         }
     }
 
-    // Backup Restore
     val importBackupLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
@@ -506,6 +501,7 @@ fun MainScreen(
                         clockEnabled = backupBundle.clockEnabled
                         clockFont = backupBundle.clockFont
                         clockSizeSp = backupBundle.clockSizeSp.toFloat()
+                        animationStyle = backupBundle.animationStyle
 
                         prefs.edit()
                             .putString("categories_json", Gson().toJson(restoredCategories))
@@ -519,6 +515,7 @@ fun MainScreen(
                             .putBoolean("clock_enabled", backupBundle.clockEnabled)
                             .putString("clock_font", backupBundle.clockFont)
                             .putInt("clock_size_sp", backupBundle.clockSizeSp)
+                            .putString("animation_style", backupBundle.animationStyle)
                             .apply()
 
                         AppIconHelper.clearCache(context)
@@ -535,7 +532,6 @@ fun MainScreen(
         }
     }
 
-    // Category Gallery Picker
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -625,7 +621,8 @@ fun MainScreen(
                             unifiedIconStyle,
                             clockEnabled,
                             clockFont,
-                            clockSizeSp.toInt()
+                            clockSizeSp.toInt(),
+                            animationStyle
                         )
                     },
                     modifier = Modifier.fillMaxWidth().height(52.dp),
@@ -757,7 +754,6 @@ fun MainScreen(
                             }
                         }
 
-                        // App Shortcuts Integration Button (Nova-grade)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -778,7 +774,6 @@ fun MainScreen(
                             }
                         }
 
-                        // 4. SEARCH BAR WITH CLEAR CROSS BUTTON
                         OutlinedTextField(
                             value = searchQuery,
                             onValueChange = { searchQuery = it },
@@ -808,7 +803,6 @@ fun MainScreen(
                             )
                         )
 
-                        // App List with selected apps floated to top
                         if (isLoading) {
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 CircularProgressIndicator(color = Color(0xFF7C3AED))
@@ -1179,7 +1173,7 @@ fun MainScreen(
                 }
             }
 
-            // TAB 2: GENERAL (Exclusive Default vs Icon Pack)
+            // TAB 2: GENERAL (Icon Packs & Animation Styles)
             if (selectedMainTab == 2) {
                 LazyColumn(
                     modifier = Modifier
@@ -1187,6 +1181,31 @@ fun MainScreen(
                         .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
+                    // CATEGORY SWITCH ANIMATION STYLE SELECTOR
+                    item {
+                        SettingsCard(
+                            title = "Category Switch Animation",
+                            titleColor = Color(0xFF7C3AED),
+                            subtitle = "Select transition effect when switching sidebar categories."
+                        ) {
+                            Column {
+                                listOf(
+                                    "fade" to "Fade (Smooth Crossfade)",
+                                    "slide_h" to "Slide Horizontal (Lateral Swipe)",
+                                    "slide_v" to "Slide Vertical (Bottom-Up Rise)",
+                                    "zoom" to "Zoom & Scale (Pop Transition)",
+                                    "none" to "None (Instant / 0ms Snappy)"
+                                ).forEach { (key, label) ->
+                                    RadioOption(
+                                        label = label,
+                                        isSelected = animationStyle == key,
+                                        onClick = { animationStyle = key }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     item {
                         SettingsCard(
                             title = "App Icon Style & Pack",
@@ -1248,7 +1267,7 @@ fun MainScreen(
                         ) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 Text(
-                                    text = "Zero-latency native RemoteViews engine with dynamic font rendering, scrollable collections, and gallery icon integration.",
+                                    text = "Zero-latency native RemoteViews engine with dynamic transitions, font rendering, scrollable collections, and gallery icon integration.",
                                     color = Color(0xFF4B5563),
                                     fontSize = 13.sp
                                 )
@@ -1262,151 +1281,7 @@ fun MainScreen(
         }
     }
 
-    // 2. CHANGE SPECIFIC APP ICON DIALOG
-    if (editingAppForIcon != null) {
-        val app = editingAppForIcon!!
-        AlertDialog(
-            onDismissRequest = { editingAppForIcon = null },
-            title = {
-                Text(
-                    text = "Icon for ${app.appName}",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    color = Color(0xFF1E1B2E)
-                )
-            },
-            text = {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Button(
-                        onClick = { appGalleryLauncher.launch("image/*") },
-                        modifier = Modifier.fillMaxWidth().height(48.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
-                    ) {
-                        Text("📁 Upload Icon from Gallery", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    OutlinedButton(
-                        onClick = {
-                            prefs.edit().remove("custom_app_icon_${app.packageName}").remove("custom_app_icon_${app.id}").apply()
-                            AppIconHelper.clearCache(context)
-                            editingAppForIcon = null
-                            iconUpdateCounter++
-                            Toast.makeText(context, "Reset to default app icon", Toast.LENGTH_SHORT).show()
-                        },
-                        modifier = Modifier.fillMaxWidth().height(44.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, Color(0xFFEF4444))
-                    ) {
-                        Text("🔄 Reset to Default Icon", color = Color(0xFFEF4444), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text("Or choose a modern minimal symbol:", color = Color.Gray, fontSize = 12.sp)
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    LazyColumn(
-                        modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp)
-                    ) {
-                        items(modernCuratedSymbols.chunked(6)) { rowIcons ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                rowIcons.forEach { symbol ->
-                                    Box(
-                                        modifier = Modifier
-                                            .size(38.dp)
-                                            .background(Color(0xFFF3E8FF), CircleShape)
-                                            .clickable {
-                                                prefs.edit().putString("custom_app_icon_${app.packageName}", "symbol:$symbol").apply()
-                                                AppIconHelper.clearCache(context)
-                                                editingAppForIcon = null
-                                                iconUpdateCounter++
-                                                Toast.makeText(context, "Symbol applied!", Toast.LENGTH_SHORT).show()
-                                            },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(symbol, fontSize = 18.sp, color = Color(0xFF7C3AED), fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { editingAppForIcon = null }) {
-                    Text("Cancel", color = Color(0xFF7C3AED))
-                }
-            },
-            containerColor = Color.White
-        )
-    }
-
-    // 3. CATEGORY ICON DIALOG: Clean modern symbols without letter text box
-    if (showIconDialog) {
-        AlertDialog(
-            onDismissRequest = { showIconDialog = false },
-            title = { Text("Category Icon", fontWeight = FontWeight.Bold, color = Color(0xFF1E1B2E)) },
-            text = {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Button(
-                        onClick = { galleryLauncher.launch("image/*") },
-                        modifier = Modifier.fillMaxWidth().height(48.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
-                    ) {
-                        Text("📁 Upload Icon from Gallery", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-                    Text("Or choose a modern minimal symbol:", color = Color.Gray, fontSize = 12.sp)
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    LazyColumn(
-                        modifier = Modifier.fillMaxWidth().heightIn(max = 280.dp)
-                    ) {
-                        items(modernCuratedSymbols.chunked(6)) { rowIcons ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                rowIcons.forEach { symbol ->
-                                    Box(
-                                        modifier = Modifier
-                                            .size(38.dp)
-                                            .background(Color(0xFFF3E8FF), CircleShape)
-                                            .clickable {
-                                                if (currentCategory != null) {
-                                                    categories = categories.map {
-                                                        if (it.id == currentCategory.id) it.copy(icon = symbol) else it
-                                                    }
-                                                }
-                                                showIconDialog = false
-                                            },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(symbol, fontSize = 18.sp, color = Color(0xFF7C3AED), fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showIconDialog = false }) {
-                    Text("Cancel", color = Color.Gray)
-                }
-            },
-            containerColor = Color.White
-        )
-    }
-
-    // Preferences & Backup Dialog
+    // Top-Right Settings Dialog
     if (showSettingsDialog) {
         AlertDialog(
             onDismissRequest = { showSettingsDialog = false },
@@ -1421,7 +1296,7 @@ fun MainScreen(
             text = {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Text(
-                        text = "Backup your entire configuration, categories, assigned apps, and custom icons to a JSON file, or restore them anytime.",
+                        text = "Backup your entire configuration, categories, assigned apps, animations, and custom icons to a JSON file, or restore them anytime.",
                         fontSize = 13.sp,
                         color = Color(0xFF6B7280),
                         lineHeight = 17.sp
@@ -1506,6 +1381,7 @@ fun MainScreen(
                         clockEnabled = true
                         clockFont = "sans-serif"
                         clockSizeSp = 26f
+                        animationStyle = "fade"
 
                         prefs.edit().clear().apply()
                         val iconDir = File(context.filesDir, "category_icons")
@@ -1689,6 +1565,7 @@ fun MainScreen(
 
     // Rename Category Dialog
     if (showRenameDialog) {
+        val currentCategory = categories.firstOrNull { it.id == editingCategoryId }
         AlertDialog(
             onDismissRequest = { showRenameDialog = false },
             title = { Text("Rename Category", fontWeight = FontWeight.Bold, color = Color(0xFF1E1B2E)) },
@@ -1721,6 +1598,150 @@ fun MainScreen(
             dismissButton = {
                 TextButton(onClick = { showRenameDialog = false }) {
                     Text("Cancel", color = Color.Gray)
+                }
+            },
+            containerColor = Color.White
+        )
+    }
+
+    // Category Icon Dialog
+    if (showIconDialog) {
+        AlertDialog(
+            onDismissRequest = { showIconDialog = false },
+            title = { Text("Category Icon", fontWeight = FontWeight.Bold, color = Color(0xFF1E1B2E)) },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Button(
+                        onClick = { galleryLauncher.launch("image/*") },
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
+                    ) {
+                        Text("📁 Upload Icon from Gallery", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Text("Or choose a modern minimal symbol:", color = Color.Gray, fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 280.dp)
+                    ) {
+                        items(modernCuratedSymbols.chunked(6)) { rowIcons ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                rowIcons.forEach { symbol ->
+                                    Box(
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .background(Color(0xFFF3E8FF), CircleShape)
+                                            .clickable {
+                                                if (currentCategory != null) {
+                                                    categories = categories.map {
+                                                        if (it.id == currentCategory.id) it.copy(icon = symbol) else it
+                                                    }
+                                                }
+                                                showIconDialog = false
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(symbol, fontSize = 18.sp, color = Color(0xFF7C3AED), fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showIconDialog = false }) {
+                    Text("Cancel", color = Color.Gray)
+                }
+            },
+            containerColor = Color.White
+        )
+    }
+
+    // Change Specific App Icon Dialog
+    if (editingAppForIcon != null) {
+        val app = editingAppForIcon!!
+        AlertDialog(
+            onDismissRequest = { editingAppForIcon = null },
+            title = {
+                Text(
+                    text = "Icon for ${app.appName}",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = Color(0xFF1E1B2E)
+                )
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Button(
+                        onClick = { appGalleryLauncher.launch("image/*") },
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB))
+                    ) {
+                        Text("📁 Upload Icon from Gallery", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedButton(
+                        onClick = {
+                            prefs.edit().remove("custom_app_icon_${app.packageName}").remove("custom_app_icon_${app.id}").apply()
+                            AppIconHelper.clearCache(context)
+                            editingAppForIcon = null
+                            iconUpdateCounter++
+                            Toast.makeText(context, "Reset to default app icon", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.fillMaxWidth().height(44.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, Color(0xFFEF4444))
+                    ) {
+                        Text("🔄 Reset to Default Icon", color = Color(0xFFEF4444), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("Or choose a modern minimal symbol:", color = Color.Gray, fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp)
+                    ) {
+                        items(modernCuratedSymbols.chunked(6)) { rowIcons ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                rowIcons.forEach { symbol ->
+                                    Box(
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .background(Color(0xFFF3E8FF), CircleShape)
+                                            .clickable {
+                                                prefs.edit().putString("custom_app_icon_${app.packageName}", "symbol:$symbol").apply()
+                                                AppIconHelper.clearCache(context)
+                                                editingAppForIcon = null
+                                                iconUpdateCounter++
+                                                Toast.makeText(context, "Symbol applied!", Toast.LENGTH_SHORT).show()
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(symbol, fontSize = 18.sp, color = Color(0xFF7C3AED), fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { editingAppForIcon = null }) {
+                    Text("Cancel", color = Color(0xFF7C3AED))
                 }
             },
             containerColor = Color.White
@@ -1840,7 +1861,6 @@ private fun AppItemRow(
             .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // App icon preview with quick-tap customization
         Box(
             modifier = Modifier
                 .size(38.dp)
@@ -1885,7 +1905,6 @@ private fun AppItemRow(
             )
         }
 
-        // Tap icon button to trigger custom app icon dialog
         TextButton(
             onClick = onChangeIcon,
             contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
