@@ -206,7 +206,6 @@ fun MainScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Main Top Tabs: Category vs Sidebar
             TabRow(
                 selectedTabIndex = selectedMainTab,
                 containerColor = Color(0xFF181820),
@@ -237,7 +236,6 @@ fun MainScreen(
             }
 
             if (selectedMainTab == 0) {
-                // Category Switcher Tabs
                 ScrollableTabRow(
                     selectedTabIndex = safeIndex,
                     containerColor = Color(0xFF15151C),
@@ -253,7 +251,6 @@ fun MainScreen(
                     }
                 }
 
-                // Dynamic Category Controls: Add (+) & Delete
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -272,7 +269,6 @@ fun MainScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Delete category button (active when more than 1 category exists)
                         if (categories.size > 1) {
                             TextButton(
                                 onClick = {
@@ -288,7 +284,6 @@ fun MainScreen(
                             }
                         }
 
-                        // Add category button (caps at 4 to fit widget dock)
                         Button(
                             onClick = {
                                 if (categories.size >= 4) {
@@ -307,7 +302,6 @@ fun MainScreen(
                     }
                 }
 
-                // Search Bar
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
@@ -452,11 +446,9 @@ fun MainScreen(
         }
     }
 
-    // Add Category Dialog
     if (showAddCategoryDialog) {
         AlertDialog(
             onDismissRequest = { showAddCategoryDialog = false },
-            containerColor = Color(0xFF1E1E26),
             title = {
                 Text(
                     text = "New Category",
@@ -467,6 +459,14 @@ fun MainScreen(
             text = {
                 Column {
                     Text(
-                        text = "Enter category name (e.g. Games, Finance, Tools):",
+                        text = "Enter category name (max 12 characters):",
                         color = Color.Gray,
-            
+                        fontSize = 13.sp
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = newCategoryName,
+                        onValueChange = { if (it.length <= 12) newCategoryName = it },
+                        placeholder = { Text("Category name...", color = Color.DarkGray) },
+                        singleLine = true,
+                
