@@ -1,5 +1,6 @@
 package com.example.categorydockwidget.data
 
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -15,14 +16,18 @@ import java.io.FileOutputStream
 
 data class AppModel(
     val packageName: String,
-    val appName: String
-)
+    val appName: String,
+    val activityName: String = ""
+) {
+    val id: String
+        get() = if (activityName.isNotBlank()) "$packageName/$activityName" else packageName
+}
 
 data class Category(
     val id: String,
     val name: String,
     val packageNames: List<String> = emptyList(),
-    val icon: String? = "" // Holds symbol or "gallery:<filename>"
+    val icon: String? = ""
 ) {
     val isGallery: Boolean
         get() = icon?.startsWith("gallery:") == true
@@ -54,9 +59,26 @@ object AppIconHelper {
         }
     }
 
-    fun getLaunchIntent(context: Context, packageName: String): Intent? {
-        return intentCache.getOrPut(packageName) {
-            context.packageManager.getLaunchIntentForPackage(packageName)
+    fun getLaunchIntent(context: Context, appKey: String): Intent? {
+        return intentCache.getOrPut(appKey) {
+            val pm = context.packageManager
+            if (appKey.contains("/")) {
+                val parts = appKey.split("/")
+                val pkg = parts[0]
+                val act = parts[1]
+                val explicitIntent = Intent(Intent.ACTION_MAIN).apply {
+                    addCategory(Intent.CATEGORY_LAUNCHER)
+                    component = ComponentName(pkg, act)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                if (explicitIntent.resolveActivity(pm) != null) {
+                    return@getOrPut explicitIntent
+                }
+            }
+            val plainPkg = appKey.substringBefore("/")
+            pm.getLaunchIntentForPackage(plainPkg)?.apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
         }
     }
 
@@ -150,32 +172,40 @@ object AppIconHelper {
         return map
     }
 
-    private fun getIconFromPack(context: Context, iconPackPackage: String, appPackage: String): Bitmap? {
+    private fun getIconFromPack(context: Context, iconPackPackage: String, appKey: String): Bitmap? {
         if (iconPackPackage.isBlank() || iconPackPackage == "none" || iconPackPackage == "default") return null
         return try {
             val map = getIconPackMap(context, iconPackPackage)
             val pm = context.packageManager
-            val launchIntent = pm.getLaunchIntentForPackage(appPackage)
-            val comp = launchIntent?.component
+            val plainPkg = appKey.substringBefore("/")
 
             var drawableName: String? = null
-            if (comp != null) {
-                val fullComp = comp.flattenToString()
-                val compInfo = "${comp.packageName}/${comp.className}"
-                drawableName = map[fullComp] ?: map[fullComp.lowercase()] ?: map[compInfo] ?: map[compInfo.lowercase()]
+            if (appKey.contains("/")) {
+                val parts = appKey.split("/")
+                val fullComp = "${parts[0]}/${parts[1]}"
+                drawableName = map[fullComp] ?: map[fullComp.lowercase()]
             }
 
             if (drawableName == null) {
-                drawableName = map[appPackage] ?: map[appPackage.lowercase()]
+                val launchIntent = pm.getLaunchIntentForPackage(plainPkg)
+                val comp = launchIntent?.component
+                if (comp != null) {
+                    val fullComp = comp.flattenToString()
+                    drawableName = map[fullComp] ?: map[fullComp.lowercase()]
+                }
+            }
+
+            if (drawableName == null) {
+                drawableName = map[plainPkg] ?: map[plainPkg.lowercase()]
             }
             if (drawableName == null) {
-                drawableName = appPackage.replace('.', '_').lowercase()
+                drawableName = plainPkg.replace('.', '_').lowercase()
             }
 
             val packRes = pm.getResourcesForApplication(iconPackPackage)
             var resId = packRes.getIdentifier(drawableName, "drawable", iconPackPackage)
             if (resId == 0) {
-                val shortName = appPackage.substringAfterLast('.').lowercase()
+                val shortName = plainPkg.substringAfterLast('.').lowercase()
                 resId = packRes.getIdentifier(shortName, "drawable", iconPackPackage)
             }
 
@@ -193,11 +223,11 @@ object AppIconHelper {
         }
     }
 
-    fun getAppBitmap(context: Context, packageName: String): Bitmap? {
+    fun getAppBitmap(context: Context, appKey: String): Bitmap? {
         val prefs = context.getSharedPreferences("widget_prefs", Context.MODE_PRIVATE)
-        // Only "default" or "pack:<packageName>"
         val unifiedStyle = prefs.getString("unified_icon_style", "default") ?: "default"
-        val cacheKey = "${packageName}_${unifiedStyle}"
+        val sanitizedKey = appKey.replace('/', '_')
+        val cacheKey = "${sanitizedKey}_${unifiedStyle}"
 
         iconCache.get(cacheKey)?.let { return it }
 
@@ -220,13 +250,22 @@ object AppIconHelper {
 
             if (unifiedStyle.startsWith("pack:")) {
                 val packPkg = unifiedStyle.removePrefix("pack:")
-                finalBitmap = getIconFromPack(context, packPkg, packageName)
+                finalBitmap = getIconFromPack(context, packPkg, appKey)
             }
 
-            // Fallback to default original app icon
             if (finalBitmap == null) {
                 val pm = context.packageManager
-                val drawable = pm.getApplicationIcon(packageName)
+                val drawable = if (appKey.contains("/")) {
+                    val parts = appKey.split("/")
+                    try {
+                        pm.getActivityIcon(ComponentName(parts[0], parts[1]))
+                    } catch (_: Exception) {
+                        pm.getApplicationIcon(parts[0])
+                    }
+                } else {
+                    pm.getApplicationIcon(appKey)
+                }
+
                 val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
                 val canvas = Canvas(bmp)
                 drawable.setBounds(0, 0, size, size)

@@ -23,7 +23,7 @@ object AppRepository {
             if (json != null) {
                 val type = object : TypeToken<List<AppModel>>() {}.type
                 val list: List<AppModel> = gson.fromJson(json, type) ?: emptyList()
-                val distinct = list.distinctBy { it.packageName }
+                val distinct = list.distinctBy { it.id }
                 memoryApps = distinct
                 distinct
             } else {
@@ -37,23 +37,34 @@ object AppRepository {
     suspend fun reloadApps(context: Context): List<AppModel> = withContext(Dispatchers.IO) {
         try {
             val pm = context.packageManager
-            val intent = Intent(Intent.ACTION_MAIN, null).apply {
+
+            // 1. Standard Launcher activities
+            val launcherIntent = Intent(Intent.ACTION_MAIN, null).apply {
                 addCategory(Intent.CATEGORY_LAUNCHER)
             }
-            val resolveInfos = pm.queryIntentActivities(intent, 0)
-            
-            val apps = resolveInfos.mapNotNull { resolveInfo ->
+            val launcherActivities = pm.queryIntentActivities(launcherIntent, 0)
+
+            // 2. Dialer & Phone activities (captures OEM phone apps sharing contact packages)
+            val dialIntent = Intent(Intent.ACTION_DIAL)
+            val dialActivities = pm.queryIntentActivities(dialIntent, 0)
+
+            val combined = (launcherActivities + dialActivities)
+
+            val apps = combined.mapNotNull { resolveInfo ->
                 try {
                     val pkg = resolveInfo.activityInfo.packageName
+                    val actName = resolveInfo.activityInfo.name
                     if (pkg != context.packageName) {
-                        val name = resolveInfo.loadLabel(pm).toString()
-                        AppModel(packageName = pkg, appName = name)
+                        val name = resolveInfo.loadLabel(pm).toString().ifBlank {
+                            resolveInfo.activityInfo.loadLabel(pm).toString()
+                        }
+                        AppModel(packageName = pkg, appName = name, activityName = actName)
                     } else null
                 } catch (_: Exception) {
                     null
                 }
             }
-            .distinctBy { it.packageName } // Eliminates duplicate launcher entries
+            .distinctBy { "${it.packageName}/${it.appName}" }
             .sortedBy { it.appName.lowercase() }
 
             memoryApps = apps

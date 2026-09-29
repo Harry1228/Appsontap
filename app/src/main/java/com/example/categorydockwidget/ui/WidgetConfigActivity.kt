@@ -52,7 +52,6 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 
-// Backup data models
 data class CategoryBackupItem(
     val id: String,
     val name: String,
@@ -113,7 +112,7 @@ class WidgetConfigActivity : ComponentActivity() {
         categories: List<Category>,
         sidebarPosition: String,
         sidebarAlignment: String,
-        sidebarDisplayType: String,
+        sidebarDisplay: String,
         sidebarSizeSp: Int,
         categoryIconSizeDp: Int,
         sidebarFont: String,
@@ -134,7 +133,7 @@ class WidgetConfigActivity : ComponentActivity() {
             .putString("categories_json", Gson().toJson(categories))
             .putString("sidebar_position", sidebarPosition)
             .putString("sidebar_alignment", sidebarAlignment)
-            .putString("sidebar_display_type", sidebarDisplayType)
+            .putString("sidebar_display_type", sidebarDisplay)
             .putInt("sidebar_icon_size_sp", sidebarSizeSp)
             .putInt("category_icon_size_dp", categoryIconSizeDp)
             .putString("sidebar_font_family", sidebarFont)
@@ -204,7 +203,6 @@ fun MainScreen(
     var selectedMainTab by remember { mutableIntStateOf(1) }
     var editingCategoryId by remember { mutableStateOf<String?>(null) }
 
-    // Dialog flags
     var showSettingsDialog by remember { mutableStateOf(false) }
     var showResetConfirmDialog by remember { mutableStateOf(false) }
     var showAddCategoryDialog by remember { mutableStateOf(false) }
@@ -256,7 +254,6 @@ fun MainScreen(
         mutableStateOf<List<AppModel>>(emptyList())
     }
 
-    // Clock preferences
     var clockEnabled by remember {
         mutableStateOf(prefs.getBoolean("clock_enabled", true))
     }
@@ -285,15 +282,25 @@ fun MainScreen(
     }
 
     val filteredApps = remember(searchQuery, installedApps) {
-        val list = if (searchQuery.isBlank()) installedApps
-        else installedApps.filter {
-            it.appName.contains(searchQuery, ignoreCase = true) ||
-            it.packageName.contains(searchQuery, ignoreCase = true)
+        val query = searchQuery.trim().lowercase()
+        if (query.isBlank()) {
+            installedApps
+        } else {
+            val isPhoneQuery = query == "phone" || query == "call" || query == "dial" || query == "dialer"
+            installedApps.filter { app ->
+                val name = app.appName.lowercase()
+                val pkg = app.packageName.lowercase()
+                name.contains(query) || pkg.contains(query) || (isPhoneQuery && (
+                    name.contains("dial") || 
+                    name.contains("call") || 
+                    pkg.contains("dialer") || 
+                    pkg.contains("telecom") || 
+                    name.contains("phone")
+                ))
+            }
         }
-        list.distinctBy { it.packageName }
     }
 
-    // Backup Export File Picker
     val exportBackupLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
     ) { uri: Uri? ->
@@ -341,7 +348,6 @@ fun MainScreen(
         }
     }
 
-    // Backup Restore File Picker
     val importBackupLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
@@ -412,7 +418,6 @@ fun MainScreen(
         }
     }
 
-    // Gallery Picker Contract
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
@@ -470,7 +475,6 @@ fun MainScreen(
                     )
                 },
                 actions = {
-                    // Top-Right Settings Icon
                     IconButton(onClick = { showSettingsDialog = true }) {
                         Icon(
                             painter = painterResource(id = R.drawable.ic_settings),
@@ -668,18 +672,18 @@ fun MainScreen(
                             ) {
                                 items(
                                     items = filteredApps,
-                                    key = { it.packageName }
+                                    key = { it.id }
                                 ) { app ->
-                                    val isChecked = selectedSet.contains(app.packageName)
+                                    val isChecked = selectedSet.contains(app.id) || selectedSet.contains(app.packageName)
                                     AppItemRow(
                                         appName = app.appName,
                                         packageName = app.packageName,
                                         isChecked = isChecked,
                                         onToggle = {
                                             val updatedList = if (isChecked) {
-                                                currentCategory.packageNames - app.packageName
+                                                currentCategory.packageNames - app.id - app.packageName
                                             } else {
-                                                currentCategory.packageNames + app.packageName
+                                                currentCategory.packageNames + app.id
                                             }
                                             categories = categories.map {
                                                 if (it.id == currentCategory.id) it.copy(packageNames = updatedList) else it
@@ -1107,7 +1111,7 @@ fun MainScreen(
         }
     }
 
-    // TOP-RIGHT SETTINGS & BACKUP DIALOG
+    // Top-Right Settings Dialog
     if (showSettingsDialog) {
         AlertDialog(
             onDismissRequest = { showSettingsDialog = false },
@@ -1130,7 +1134,6 @@ fun MainScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Backup Button
                     Button(
                         onClick = {
                             exportBackupLauncher.launch("apps_widget_backup_${System.currentTimeMillis()}.json")
@@ -1144,7 +1147,6 @@ fun MainScreen(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // Restore Button
                     OutlinedButton(
                         onClick = {
                             importBackupLauncher.launch(arrayOf("application/json", "text/*", "*/*"))
@@ -1160,7 +1162,6 @@ fun MainScreen(
                     HorizontalDivider(color = Color(0xFFF3E8FF))
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Reset Button
                     Button(
                         onClick = {
                             showResetConfirmDialog = true
@@ -1182,7 +1183,7 @@ fun MainScreen(
         )
     }
 
-    // RESET CONFIRMATION DIALOG
+    // Reset Confirm Dialog
     if (showResetConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showResetConfirmDialog = false },
